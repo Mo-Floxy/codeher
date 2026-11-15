@@ -1,0 +1,164 @@
+/* Admin console styles: section navigation, tables, filters and modal forms.
+   Reuses ui.css tables/tabs/modals; only the admin shell layout lives here. */
+
+.admin-shell {
+  display: grid;
+  gap: var(--sp-6);
+}
+
+.admin-head {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.admin-head__title {
+  font-size: var(--fs-xl);
+}
+
+.admin-nav {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-nav);
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--glass-border);
+  background: rgba(5, 6, 15, 0.72);
+  backdrop-filter: blur(14px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.admin-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-nav__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: var(--r-full);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: color var(--dur-fast), background-color var(--dur-fast);
+}
+
+.admin-nav__link:hover {
+  color: var(--text-primary);
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.admin-nav__link--active {
+  color: #fff;
+  background: var(--brand-gradient);
+  box-shadow: 0 8px 22px -12px rgba(168, 85, 247, 0.9);
+}
+
+.admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: end;
+}
+
+.admin-toolbar .field {
+  min-width: 170px;
+}
+
+.admin-toolbar__grow {
+  flex: 1;
+  min-width: 220px;
+}
+
+.admin-panel {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.readonly-note {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--cyan-soft);
+  background: rgba(34, 211, 238, 0.06);
+  color: var(--cyan);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.admin-cell__actions {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.admin-empty {
+  padding: var(--sp-6);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+/* Compact status pill used inside tables. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--r-full);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  border: 1px solid var(--glass-border);
+}
+
+.status-pill--ok {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.status-pill--warn {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.status-pill--off {
+  color: var(--text-muted);
+  background: rgba(126, 136, 173, 0.14);
+}
+
+.admin-modal-form {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.admin-modal-form .form-grid {
+  display: grid;
+  gap: var(--sp-4);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.code-input {
+  width: 100%;
+  min-height: 150px;
+  padding: var(--sp-4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--glass-border);
+  background: #060815;
+  color: #d7ddff;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.code-input:focus-visible {
+  border-color: var(--purple);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.22);
+}

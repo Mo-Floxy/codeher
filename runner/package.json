@@ -1,0 +1,15 @@
+{
+  "name": "codeher-runner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Isolated code-execution service for CodeHer challenges. Django talks HTTP to this; it never runs inside the web process.",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --max-old-space-size=128 server.js",
+    "smoke": "node smoke-test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

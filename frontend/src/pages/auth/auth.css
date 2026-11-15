@@ -1,0 +1,127 @@
+.auth-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(var(--sp-5), 5vw, var(--sp-8));
+  align-items: center;
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: clamp(var(--sp-5), 6vw, var(--sp-8)) var(--gutter);
+  min-height: calc(100vh - var(--nav-h));
+}
+
+.auth-side {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  padding: clamp(var(--sp-5), 4vw, var(--sp-7));
+  border-radius: var(--r-2xl);
+  border: 1px solid var(--glass-border);
+  background:
+    radial-gradient(90% 70% at 10% 0%, rgba(139, 92, 246, 0.2), transparent 60%),
+    var(--bg-surface);
+  overflow: hidden;
+  min-height: 520px;
+}
+
+.auth-side__body {
+  display: grid;
+  gap: var(--sp-6);
+  position: relative;
+  z-index: 1;
+}
+
+.auth-side__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border-radius: var(--r-sm);
+  background: var(--purple-soft);
+  color: var(--violet);
+}
+
+.auth-main {
+  display: grid;
+  place-items: center;
+}
+
+.auth-card {
+  width: min(430px, 100%);
+  display: grid;
+  gap: var(--sp-5);
+  padding: clamp(var(--sp-5), 4vw, var(--sp-7));
+  border-radius: var(--r-xl);
+  border: 1px solid var(--glass-border-hover);
+  background: var(--glass-strong);
+  backdrop-filter: blur(20px);
+  box-shadow: var(--shadow-lg);
+}
+
+.auth-card--wide {
+  width: min(620px, 100%);
+}
+
+.auth-card__head {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.auth-card__head h1 {
+  font-size: var(--fs-xl);
+}
+
+.auth-card__head p {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.auth-card__foot {
+  display: grid;
+  gap: var(--sp-3);
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.auth-links {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+}
+
+.password-rules {
+  display: grid;
+  gap: 4px;
+  font-size: var(--fs-xs);
+}
+
+.password-rules li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-muted);
+}
+
+.password-rules li[data-ok="true"] {
+  color: var(--success);
+}
+
+@media (max-width: 940px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .auth-side {
+    min-height: auto;
+  }
+
+  .auth-side__body ul {
+    display: none;
+  }
+}

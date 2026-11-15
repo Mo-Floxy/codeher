@@ -1,0 +1,385 @@
+# CodeHer
+
+**Code Your Future. Own Your Power.**
+
+A learning and community platform for girls and women in technology: structured
+curriculum, coding challenges run in an isolated sandbox, a project and Q&A
+community, mentorship matching, XP-driven gamification and a database-backed
+admin console.
+
+Three independent processes, no duplicated implementations:
+
+| Process   | Technology                             | Default address        |
+| --------- | -------------------------------------- | ---------------------- |
+| Frontend  | React 19 + Vite, Framer Motion, Recharts | http://127.0.0.1:5173 |
+| Backend   | Django 6 + Django REST Framework, MySQL | http://127.0.0.1:8000 |
+| Runner    | Node.js sandbox service                 | http://127.0.0.1:8090  |
+
+The backend is the only writer of application data. The frontend never talks to
+the runner; Django proxies submissions to it over HTTP with a shared secret, so
+user code never executes inside the web process.
+
+---
+
+## Repository layout
+
+```
+codeher/
+  frontend/            React + Vite single-page app
+    src/components/    buttons, cards, forms, editor, charts…
+    src/layouts/       public shell, app shell, sidebar, footer
+    src/pages/         public / auth / learning / challenges / community /
+                       mentorship / app / admin
+    src/features/      page-specific composition blocks
+    src/hooks/         useAuth, useAsync, useToast, useMediaQuery…
+    src/services/      api client, endpoints, formatters
+    src/context/       auth + toast providers
+    src/styles/        design tokens, dark theme, glassmorphism
+  backend/             Django project
+    config/            settings, root URLconf, test settings
+    apps/users/        accounts, roles, profiles, follow graph
+    apps/courses/      paths, courses, modules, lessons, quizzes
+    apps/progress/     enrollments, completions, streaks, certificates, dashboard
+    apps/challenges/   challenges, test cases, submissions, leaderboard
+    apps/community/    posts, comments, projects, engagement, reports
+    apps/mentorship/   mentor profiles, requests, sessions
+    apps/achievements/ XP, levels, badges, activity, rankings
+    apps/notifications/ in-app notifications
+    apps/core/         shared models, admin API, permissions, seed data
+    scripts/           api_smoke.py, audit_seed_tests.py
+    setup.sql          MySQL database and user
+    manage.py, requirements.txt, .env.example
+  runner/              isolated execution service (lib/, server.js, smoke-test.js)
+```
+
+---
+
+## Prerequisites
+
+- **Python 3.12 or newer** (developed on 3.14) — `python --version`
+- **Node.js 18 or newer** (developed on 23) — `node --version`
+- **MySQL 8.4 / 9.x**, or use the SQLite fallback below
+- Git for Windows
+
+> On Windows, `python` in `PATH` is often the Microsoft Store alias that starts
+> nothing. If a command below appears to do nothing, use the full interpreter
+> path (for example `& "C:\Users\<you>\AppData\Local\Programs\Python\Python314\python.exe"`).
+
+---
+
+## Quick start
+
+Open **three PowerShell windows**. Run the backend and the runner first; the
+frontend works without them but shows honest "API unavailable" states.
+
+### 1. Backend (terminal 1)
+
+```powershell
+cd C:\Users\HP\Documents\Qoder\2026-10-21\f62a1663\codeher\backend
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+Copy-Item .env.example .env
+notepad .env          # set DJANGO_SECRET_KEY, JWT_SIGNING_KEY, RUNNER_SHARED_SECRET, DB settings
+
+python manage.py migrate
+python manage.py seed
+python manage.py runserver 127.0.0.1:8000
+```
+
+`manage.py seed` writes real rows for everything: 9 learning paths, 18 courses,
+107 lessons, 33 quizzes, 12 challenges with graded test cases, community posts
+and projects with genuine like/bookmark rows, mentor profiles, events and sample
+learner progress produced through the actual completion services.
+
+### 2. Sandbox runner (terminal 2)
+
+```powershell
+cd C:\Users\HP\Documents\Qoder\2026-10-21\f62a1663\codeher\runner
+
+npm install
+Copy-Item .env.example .env
+notepad .env          # RUNNER_SHARED_SECRET must match backend/.env, PYTHON_BIN must be a real interpreter
+
+npm run start
+npm run smoke         # optional: 17 self-checks against the live service
+```
+
+### 3. Frontend (terminal 3)
+
+```powershell
+cd C:\Users\HP\Documents\Qoder\2026-10-21\f62a1663\codeher\frontend
+
+npm install
+Copy-Item .env.example .env
+notepad .env          # VITE_API_BASE_URL defaults to http://127.0.0.1:8000/api
+
+npm run dev           # http://127.0.0.1:5173
+npm run build         # production bundle in dist/
+```
+
+### No MySQL yet? Use SQLite
+
+Everything above works unchanged with one extra environment setting, and the
+automated tests already use it:
+
+```powershell
+$env:DB_ENGINE = "sqlite"
+python manage.py migrate
+python manage.py seed
+```
+
+This writes `backend/dev.sqlite3`. It is a development convenience, not the
+deployment target — the spec's persistence requirement is MySQL.
+
+---
+
+## MySQL setup
+
+1. Start MySQL and connect as an administrator:
+
+   ```powershell
+   & "C:\Program Files\MySQL\MySQL Server 9.7\bin\mysql.exe" -u root -p
+   ```
+
+2. Create the schema and application user. Open `backend/setup.sql`, replace
+   both `REPLACE_WITH_A_STRONG_PASSWORD` occurrences with the same strong
+   password, then run it from the `backend` directory:
+
+   ```powershell
+   & "C:\Program Files\MySQL\MySQL Server 9.7\bin\mysql.exe" -u root -p -e "source setup.sql"
+   ```
+
+3. Put that password in `backend/.env`:
+
+   ```ini
+   DB_ENGINE=mysql
+   MYSQL_DATABASE=codeher
+   MYSQL_USER=codeher_app
+   MYSQL_PASSWORD=the-password-you-chose
+   MYSQL_HOST=127.0.0.1
+   MYSQL_PORT=3306
+   ```
+
+4. Migrate and seed as in step 1 of the quick start. Django never needs the
+   root password — only the `codeher_app` credentials.
+
+`requirements.txt` installs **PyMySQL**, so no MySQL C connector is required on
+Windows. `config/settings.py` keeps every column on `utf8mb4` / `utf8mb4_unicode_ci`
+so emoji and accents survive round-trips.
+
+---
+
+## Accounts
+
+Sign in with the email address. The seed prints these when it finishes:
+
+| Account               | Password                | Role    |
+| --------------------- | ----------------------- | ------- |
+| `ada@codeher.dev`     | `CodeHer!Learn2026`     | learner |
+| `grace@codeher.dev`   | `CodeHer!Mentor2026`    | mentor  |
+| `admin@codeher.dev`   | `CodeHer!Admin2026`     | admin   |
+| `nia@`, `sofia@`, `omid@`, `mei@codeher.dev` | `CodeHer!Sample2026` | learners / mentor |
+
+They are **demonstration accounts created by the seed command**, labelled as
+such in the interface. Real members must register through `/signup`.
+
+### Creating your own administrator
+
+```powershell
+cd C:\Users\HP\Documents\Qoder\2026-10-21\f62a1663\codeher\backend
+.\.venv\Scripts\Activate.ps1
+python manage.py createsuperuser
+```
+
+There are two admin surfaces:
+
+- **`http://127.0.0.1:8000/django-admin/`** — Django's own admin, every model
+  registered and editable. It is deliberately *not* at `/admin/`.
+- **`http://127.0.0.1:5173/admin`** — the React admin console (metrics,
+  charts, content management, moderation queue). Requires a member whose
+  `role` is `admin`; `is_staff` alone is not enough for the API.
+
+---
+
+## What is implemented
+
+**Public pages** — Home (hero, impact statistics, featured paths, how it works,
+featured projects, mentorship, sample testimonials, final CTA), About, learning
+catalog with search / level / category / path filters and sorting, course detail
+with curriculum and enrollment.
+
+**Accounts** — email-based registration with server-side password validation,
+sign in / sign out, JWT access + refresh with rotation and blacklist on logout,
+single-flight token refresh in the client, forgotten-password email and a reset
+page, protected routes, role-based permissions (`learner`, `mentor`, `admin`),
+profile editing with avatar upload and per-field public-visibility flags.
+
+**Dashboard** — greeting, XP and level progress, enrolled courses, Continue
+Learning with the real next lesson, completed lessons, streak tracker, weekly
+activity chart, upcoming events, recommended courses, community activity,
+achievements, quick links. A brand-new account sees zeros and empty states.
+
+**Learning** — 9 paths, courses → modules → lessons → objectives, enrollment,
+lesson player with prev/next, completion tracking, progress percentages,
+bookmarks, server-graded quizzes with per-question feedback and explanations,
+certificates with unique serials.
+
+**Challenges** — 12 challenges in three difficulty groups with public and hidden
+test cases, a CodeMirror editor with syntax highlighting, per-case feedback,
+submission history, points, and a leaderboard built from real solves.
+Execution happens in `runner/`, a separate localhost-only Node service:
+JavaScript in a `node:vm` context, Python in a `-I -S` child process with a
+stripped environment and an AST allowlist, both under CPU/memory/size limits.
+
+**Community** — publish projects, share experiences, ask questions, threaded
+comments, likes and bookmarks stored as `Engagement` rows, search by technology
+and post type, follow members, report content, trending ranked by genuine
+engagement, cursor-free paginated feeds.
+
+**Mentorship** — mentor profiles with expertise and availability, request form,
+status tracking (pending → accepted/declined), session scheduling with meeting
+links, notifications, and role checks so only approved mentors appear in the
+directory.
+
+**Gamification** — XP from verified actions only (lesson, quiz pass, course,
+first challenge solve, project publish, mentor match), levels from thresholds,
+daily/weekly goals, streaks with longest-record retention, 19 badges evaluated
+from stored rows, achievements page and leaderboard. Duplicate rewards are
+impossible: `PointEvent(user, source_type, source_id, reason)` is unique at the
+schema level.
+
+**Notifications** — comments, replies, follows, mentorship updates, course
+announcements, challenge results and achievement unlocks, unread count, mark one
+or all as read, history.
+
+**Admin console** — database-derived counters, sign-up/enrollment/engagement
+analytics charts, member management (role, activation), course, lesson, path,
+challenge and mentor editors, community moderation with the report queue,
+announcement and notification management. Every table paginates and every
+destructive action asks for confirmation.
+
+**Quality** — loading, empty, error and success states everywhere; 404 and
+error pages; responsive sidebar and mobile menu; keyboard-navigable dialogs;
+visible focus rings; `prefers-reduced-motion` disables animation; semantic HTML
+and labelled controls.
+
+---
+
+## API surface
+
+All endpoints are under `/api/`. `GET /api/` returns a browsable index.
+
+| Prefix                    | Purpose                                              |
+| ------------------------- | ---------------------------------------------------- |
+| `/api/auth/`              | register, login, logout, token refresh, password reset, me |
+| `/api/users/`             | profiles, badges, follow, member directory, admin role edits |
+| `/api/learning/`          | paths, courses, curriculum, lessons, enrollments, quizzes, certificates |
+| `/api/progress/`          | summary, activity, bookmarks                         |
+| `/api/dashboard/`         | the learner dashboard aggregate                      |
+| `/api/challenges/`        | challenge list/detail, submissions, leaderboard      |
+| `/api/community/`         | posts, comments, engagement, projects, reports       |
+| `/api/mentorship/`        | mentors, requests, sessions                          |
+| `/api/achievements/`      | badges, awards, rankings                             |
+| `/api/notifications/`     | list, unread count, mark read                        |
+| `/api/admin/`             | overview, analytics and content management (admin only) |
+| `/api/site/`              | public impact statistics, testimonials, events        |
+| `/api/uploads/`           | avatar and thumbnail uploads                         |
+
+Consistent pagination (`{ count, next, previous, results }`), meaningful status
+codes (`201` created, `205` signed out, `403` permitted-but-refused, `404`
+absent), and field-level validation errors.
+
+---
+
+## Testing
+
+```powershell
+# Backend unit and API tests — 8 modules, always on SQLite
+cd C:\Users\HP\Documents\Qoder\2026-10-21\f62a1663\codeher\backend
+.\.venv\Scripts\Activate.ps1
+python -m pytest
+
+# Runner self-checks (the runner must be running)
+cd ..\runner
+npm run smoke
+
+# Frontend unit tests and production build
+cd ..\frontend
+npm run test
+npm run build
+
+# End-to-end API walkthrough against a live backend
+cd ..\backend
+$env:DB_ENGINE = "sqlite"
+python manage.py runserver 127.0.0.1:8000
+# then, in another window:
+.\.venv\Scripts\python.exe scripts\api_smoke.py      # 44 checks
+.\.venv\Scripts\python.exe scripts\audit_seed_tests.py  # grades all seeded challenges
+```
+
+`audit_seed_tests.py` runs every seeded challenge's reference solution through
+the live runner, so a test case that cannot actually pass is caught rather than
+shipped.
+
+Manual journey to verify by hand: sign up → browse the catalog → enroll →
+finish a lesson (XP toast) → pass its quiz → solve a challenge → publish a
+project → like and comment on a post → request a mentor → check the dashboard,
+achievements, notifications and the admin console.
+
+---
+
+## Services that need your own configuration
+
+Nothing here is faked. Until you configure them, the interface says so instead
+of pretending:
+
+- **Password-reset email** — set `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`,
+  `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` and switch `DJANGO_EMAIL_BACKEND` to
+  the SMTP backend in `backend/.env`. In development the console backend prints
+  the reset link, and the API returns it in the response body instead of
+  silently claiming an email was sent.
+- **Social / community links in the footer** — set `VITE_SOCIAL_GITHUB_URL`,
+  `VITE_SOCIAL_LINKEDIN_URL`, `VITE_SOCIAL_COMMUNITY_URL`,
+  `VITE_SOCIAL_FEED_URL` in `frontend/.env`. Unset entries render no icon, so
+  the footer never links to somebody else's profile.
+- **Hardened challenge execution** — the bundled runner is a localhost service
+  suitable for development. For public deployment, put `runner/` behind a real
+  jail (Docker with `--network=none`, dropped capabilities, cgroup limits, or
+  Firecracker/gVisor) and keep `RUNNER_SHARED_SECRET` out of the repo.
+- **Avatar storage** — local `MEDIA_ROOT` by default. Point Django at object
+  storage (`django-storages`) if you need shared storage across instances.
+
+---
+
+## Known limitations
+
+- MySQL cannot express a *partial* unique index, so the few constraints that
+  depend on one (for example "one published slug per author") are enforced in
+  `clean()`/service code plus a plain index, and are covered by tests. SQLite
+  and MySQL therefore behave identically for the seeded data set.
+- The runner's isolation is deliberate but not a production jail (see above).
+  Python submissions need `PYTHON_BIN` pointing at a real interpreter; the
+  Windows Store alias will make every submission time out.
+- Testimonials are seed content clearly labelled as samples, and impact
+  statistics read from `/api/site/stats/` — if the API is unreachable the home
+  page shows a "live stats unavailable" band rather than invented numbers.
+- `npm run lint` uses oxlint and reports style warnings that were not part of
+  this build's scope.
+- Seeded demo accounts share one password on purpose so the demo is usable;
+  rotate or delete them before any real deployment.
+
+---
+
+## Security notes
+
+- Passwords use Django's PBKDF2 hashers; plaintext is never stored or logged.
+- Secrets live in `backend/.env` (git-ignored) and are never mirrored into the
+  frontend bundle — only `VITE_`-prefixed public values reach the browser.
+- JWT refresh tokens rotate and are blacklisted on logout.
+- SQL is generated by the ORM; user code is executed only in the runner; media
+  uploads are validated by Django's image fields.
+- Admin endpoints check the `admin` role server-side, and content visibility
+  flags are applied in serializers rather than only in markup.

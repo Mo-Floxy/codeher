@@ -1,0 +1,27 @@
+# Secrets and local configuration — never commit these.
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.sqlite3
+dev.sqlite3
+
+# Django
+backend/media/
+backend/staticfiles/
+*.log
+
+# Node
+node_modules/
+runner/jobs/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
