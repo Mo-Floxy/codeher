@@ -127,7 +127,11 @@ def grade_quiz(user, quiz, answers):
     detail = []
     correct = 0
     for question in questions:
-        raw = answers.get(question.pk) or answers.get(str(question.pk))
+        # `or` would drop choice 0, which is a legitimate answer, so test for presence.
+        if question.pk in answers:
+            raw = answers[question.pk]
+        else:
+            raw = answers.get(str(question.pk))
         chosen = None
         if raw is not None:
             try:
