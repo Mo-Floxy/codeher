@@ -21,7 +21,8 @@ def notify(recipient, kind, title, body="", link="", actor=None, dedupe_key=""):
         return None
 
     if dedupe_key:
-        # MySQL cannot enforce the partial unique index, so check before inserting.
+        # Cheap pre-check so a known duplicate does not spend a transaction; the
+        # uniq_notification_dedupe_ref index is the actual guarantee under concurrency.
         exists = Notification.objects.filter(
             recipient=recipient, kind=kind, dedupe_key=dedupe_key
         ).exists()

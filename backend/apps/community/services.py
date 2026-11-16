@@ -241,7 +241,12 @@ def toggle_follow(follower, target):
         existing.delete()
         return {"following": False}
 
-    Follow.objects.create(follower=follower, following=target)
+    try:
+        with transaction.atomic():
+            Follow.objects.create(follower=follower, following=target)
+    except IntegrityError:
+        # uniq_follow_pair lost the race against a double click: the switch is off.
+        return {"following": False}
 
     from apps.notifications.services import notify
 

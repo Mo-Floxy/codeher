@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -67,6 +68,18 @@ class MentorshipRequest(TimestampedModel):
     responded_at = models.DateTimeField(null=True, blank=True)
     # Denormalised so the learner inbox does not join sessions.
     session_count = models.PositiveIntegerField(default=0)
+    # 1 while the request is live, NULL once it is declined/withdrawn/completed/cancelled.
+    # Same reason as the generated columns in apps.community: "unique only while pending
+    # or accepted" needs a conditional index, which MySQL and TiDB never create.
+    live_flag = models.GeneratedField(
+        output_field=models.SmallIntegerField(),
+        expression=models.Case(
+            models.When(status__in=[STATUS_PENDING, STATUS_ACCEPTED], then=models.Value(1)),
+            default=models.Value(None, output_field=models.SmallIntegerField()),
+            output_field=models.SmallIntegerField(),
+        ),
+        db_persist=True,
+    )
 
     class Meta:
         ordering = ("-created_at",)
@@ -74,12 +87,13 @@ class MentorshipRequest(TimestampedModel):
         constraints = [
             models.CheckConstraint(condition=~models.Q(learner=models.F("mentor")), name="no_self_mentorship"),
             # One live request per learner/mentor pair; history is kept for closed pairs.
-            models.UniqueConstraint(
-                fields=["learner", "mentor"],
-                condition=models.Q(status__in=["pending", "accepted"]),
-                name="uniq_live_mentorship_request",
-            ),
+            models.UniqueConstraint(fields=["learner", "mentor", "live_flag"], name="uniq_live_mentorship_request"),
         ]
+
+    def clean(self):
+        super().clean()
+        if self.learner_id is not None and self.learner_id == self.mentor_id:
+            raise ValidationError({"mentor": "You cannot request mentorship from yourself."})
 
     def __str__(self):
         return f"{self.learner_id} -> {self.mentor_id}: {self.status}"

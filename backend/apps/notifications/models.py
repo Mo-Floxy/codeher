@@ -31,6 +31,17 @@ class Notification(TimestampedModel):
     archived_at = models.DateTimeField(null=True, blank=True)
     # Dedupe key, e.g. ("comment", 41) so a re-edited comment cannot spam the inbox.
     dedupe_key = models.CharField(max_length=120, blank=True)
+    # NULL when `dedupe_key` is blank. A conditional unique index is not created by
+    # MySQL or TiDB, so the exemption is expressed as NULL — those rows stay unconstrained.
+    dedupe_ref = models.GeneratedField(
+        output_field=models.CharField(max_length=120),
+        expression=models.Case(
+            models.When(dedupe_key="", then=models.Value(None, output_field=models.CharField(max_length=120))),
+            default=models.F("dedupe_key"),
+            output_field=models.CharField(max_length=120),
+        ),
+        db_persist=True,
+    )
 
     class Meta:
         ordering = ("-created_at",)
@@ -39,11 +50,7 @@ class Notification(TimestampedModel):
             models.Index(fields=["recipient", "kind"]),
         ]
         constraints = [
-            models.UniqueConstraint(
-                fields=["recipient", "kind", "dedupe_key"],
-                condition=~models.Q(dedupe_key=""),
-                name="uniq_notification_dedupe",
-            )
+            models.UniqueConstraint(fields=["recipient", "kind", "dedupe_ref"], name="uniq_notification_dedupe_ref")
         ]
 
     def __str__(self):

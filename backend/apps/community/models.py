@@ -1,8 +1,52 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import F, Value
+from django.db.models.functions import Cast, Concat
 from django.utils import timezone
 
 from apps.core.models import TimestampedModel
+
+
+def _require_exactly_one_target(instance, field_names):
+    """Application-level twin of the `exactly_one_*` check constraint.
+
+    TiDB reports itself as MySQL 5.7, so Django's
+    `supports_table_check_constraints` is False there and the check is skipped with a
+    models.W036 warning. The rule still has to hold, because every read path assumes
+    exactly one populated target.
+    """
+    populated = [name for name in field_names if getattr(instance, f"{name}_id") is not None]
+    if len(populated) != 1:
+        raise ValidationError(
+            {"__all__": f"Exactly one of {', '.join(field_names)} must be set (got {len(populated)})."}
+        )
+
+
+def _target_ref(*field_names):
+    """`'post:12'` for whichever of the given foreign keys is set, otherwise NULL.
+
+    Written as CASE rather than COALESCE over a concatenation on purpose: Django's
+    `Concat` wraps nullable arguments in `COALESCE(x, '')` on SQLite but not on MySQL,
+    so a comment row would yield `'post:'` on one server and NULL on the other. The
+    table prefix matters too — post 12 and comment 12 share an id but are different
+    targets, and an unprefixed value would refuse a like on both.
+    """
+    return models.Case(
+        *(
+            models.When(
+                **{f"{name}__isnull": False},
+                then=Concat(
+                    Value(f"{name}:"),
+                    Cast(F(name), models.CharField(max_length=20)),
+                    output_field=models.CharField(max_length=32),
+                ),
+            )
+            for name in field_names
+        ),
+        default=Value(None, output_field=models.CharField(max_length=32)),
+        output_field=models.CharField(max_length=32),
+    )
 
 
 class Post(TimestampedModel):
@@ -131,11 +175,20 @@ class Engagement(TimestampedModel):
     comment = models.ForeignKey(Comment, on_delete=models.CASCADE, null=True, blank=True, related_name="engagements")
     kind = models.CharField(max_length=10, choices=KIND_CHOICES)
 
+    # Which target this row points at, flattened into one comparable value. The three
+    # nullable foreign keys need a *conditional* unique index to be deduplicated, and
+    # neither MySQL nor TiDB creates one (Django skips it with models.W036), so the
+    # database-level guarantee lives here instead: a plain unique index over a column
+    # that is NULL exactly when no target is set.
+    target_ref = models.GeneratedField(
+        output_field=models.CharField(max_length=32),
+        expression=_target_ref("post", "project", "comment"),
+        db_persist=True,
+    )
+
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["user", "post", "kind"], name="uniq_post_engagement", condition=models.Q(post__isnull=False)),
-            models.UniqueConstraint(fields=["user", "project", "kind"], name="uniq_project_engagement", condition=models.Q(project__isnull=False)),
-            models.UniqueConstraint(fields=["user", "comment", "kind"], name="uniq_comment_engagement", condition=models.Q(comment__isnull=False)),
+            models.UniqueConstraint(fields=["user", "kind", "target_ref"], name="uniq_engagement_target"),
             models.CheckConstraint(
                 condition=(
                     (models.Q(post__isnull=False) & models.Q(project__isnull=True) & models.Q(comment__isnull=True))
@@ -149,6 +202,10 @@ class Engagement(TimestampedModel):
 
     def __str__(self):
         return f"{self.kind} by {self.user_id}"
+
+    def clean(self):
+        super().clean()
+        _require_exactly_one_target(self, ("post", "project", "comment"))
 
 
 class Report(TimestampedModel):
@@ -177,17 +234,31 @@ class Report(TimestampedModel):
     resolved_at = models.DateTimeField(null=True, blank=True)
     resolution_note = models.TextField(blank=True)
     action_taken = models.CharField(max_length=20, blank=True)
+    target_ref = models.GeneratedField(
+        output_field=models.CharField(max_length=32),
+        expression=_target_ref("post", "comment", "project"),
+        db_persist=True,
+    )
 
     class Meta:
         ordering = ("-created_at",)
         constraints = [
-            models.UniqueConstraint(fields=["created_by", "target_type", "post"], name="uniq_post_report", condition=models.Q(post__isnull=False)),
-            models.UniqueConstraint(fields=["created_by", "target_type", "comment"], name="uniq_comment_report", condition=models.Q(comment__isnull=False)),
-            models.UniqueConstraint(fields=["created_by", "target_type", "project"], name="uniq_project_report", condition=models.Q(project__isnull=False)),
+            models.UniqueConstraint(
+                fields=["created_by", "target_type", "target_ref"], name="uniq_report_target"
+            ),
         ]
 
     def __str__(self):
         return f"{self.target_type} {self.reason} ({self.status})"
+
+    def clean(self):
+        super().clean()
+        _require_exactly_one_target(self, ("post", "comment", "project"))
+        populated = [name for name in ("post", "comment", "project") if getattr(self, f"{name}_id") is not None]
+        if populated and populated[0] != self.target_type:
+            raise ValidationError(
+                {"target_type": f"Marked as a {self.target_type} report but attached to a {populated[0]}."}
+            )
 
     @property
     def target(self):

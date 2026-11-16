@@ -7,7 +7,7 @@ attach a meeting link — enforced here as well as in the permission classes.
 import logging
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.achievements.services import award_xp, evaluate_achievements
@@ -44,13 +44,18 @@ def create_request(learner, mentor_user, goal, message, preferred_slots=None):
     if live is not None:
         raise MentorshipConflict("You already have an open request with this mentor.")
 
-    request = MentorshipRequest.objects.create(
-        learner=learner,
-        mentor=mentor_user,
-        goal=goal,
-        message=message,
-        preferred_slots=preferred_slots or [],
-    )
+    try:
+        with transaction.atomic():
+            request = MentorshipRequest.objects.create(
+                learner=learner,
+                mentor=mentor_user,
+                goal=goal,
+                message=message,
+                preferred_slots=preferred_slots or [],
+            )
+    except IntegrityError as error:
+        # Two tabs raced past the check above; uniq_live_mentorship_request picks a winner.
+        raise MentorshipConflict("You already have an open request with this mentor.") from error
 
     from apps.notifications.services import notify
 
