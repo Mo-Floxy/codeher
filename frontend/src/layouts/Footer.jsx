@@ -3,6 +3,7 @@ import { AtSign, Globe, MessageCircle, Rss, Send } from "lucide-react";
 import { Logo, TAGLINE } from "../components/Brand";
 import { Button, Input } from "../components/ui";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 import { useState } from "react";
 
 const COLUMNS = [
@@ -30,7 +31,7 @@ const COLUMNS = [
       { label: "About CodeHer", to: "/about" },
       { label: "Sign in", to: "/signin" },
       { label: "Create account", to: "/signup" },
-      { label: "Admin console", to: "/admin" },
+      { label: "Admin console", to: "/admin", adminOnly: true },
     ],
   },
 ];
@@ -58,6 +59,7 @@ const SOCIALS = [
 
 export function Footer() {
   const toast = useToast();
+  const { isAdmin } = useAuth();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
 
@@ -108,7 +110,9 @@ export function Footer() {
               <div key={column.title}>
                 <h4 style={{ fontSize: "var(--fs-sm)", marginBottom: "var(--sp-3)" }}>{column.title}</h4>
                 <ul className="stack" style={{ gap: 9 }}>
-                  {column.links.map((link) => (
+                  {column.links
+                    .filter((link) => !link.adminOnly || isAdmin)
+                    .map((link) => (
                     <li key={link.label}>
                       <Link to={link.to} className="footer-link">
                         {link.label}
@@ -123,7 +127,8 @@ export function Footer() {
           <div className="site-footer__cta">
             <h4 style={{ fontSize: "var(--fs-md)" }}>Weekly build digest</h4>
             <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>
-              One email a week: a new lesson, a challenge, and a community project.
+              A new lesson, a challenge, and a community project — once a week. No sender is
+              configured yet, so this keeps your address on this device and nowhere else.
             </p>
             <form onSubmit={subscribe} className="stack" style={{ gap: "var(--sp-2)" }}>
               <label className="sr-only" htmlFor="footer-email">

@@ -309,6 +309,13 @@ export default function Home() {
 
         {paths.loading ? (
           <SkeletonList count={4} height={210} />
+        ) : paths.error && pathList.length === 0 ? (
+          <EmptyState
+            icon={BookOpen}
+            title="Learning paths could not be loaded"
+            description="The API did not answer, so this is a connection problem rather than an empty curriculum."
+            action={<Button variant="ghost" onClick={paths.reload}>Try again</Button>}
+          />
         ) : pathList.length === 0 ? (
           <EmptyState
             icon={BookOpen}
@@ -377,6 +384,13 @@ export default function Home() {
 
         {projects.loading ? (
           <SkeletonList count={3} height={180} />
+        ) : projects.error && projectList.length === 0 ? (
+          <EmptyState
+            icon={Target}
+            title="The showcase could not be loaded"
+            description="The API did not answer, so nothing here says whether members have published projects."
+            action={<Button variant="ghost" onClick={projects.reload}>Try again</Button>}
+          />
         ) : projectList.length === 0 ? (
           <EmptyState
             icon={Target}

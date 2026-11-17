@@ -85,6 +85,23 @@ describe("request", () => {
     stopListening();
   });
 
+  it("keeps the current session when a sign-in attempt is rejected", async () => {
+    tokenStore.set({ access: "current", refresh: "current-refresh" });
+    const leftSession = vi.fn();
+    const stopListening = onUnauthorized(leftSession);
+    const fetchMock = vi.fn(async () => jsonResponse(401, { detail: "The email or password is incorrect." }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const error = await api.post("/auth/login/", { email: "ada@example.com", password: "wrong" }).catch((caught) => caught);
+
+    expect(error.status).toBe(401);
+    expect(error.messageFor("detail")).toBe("The email or password is incorrect.");
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([`${API_BASE}/auth/login/`]);
+    expect(tokenStore.access).toBe("current");
+    expect(leftSession).not.toHaveBeenCalled();
+    stopListening();
+  });
+
   it("turns a network failure into a readable message", async () => {
     vi.stubGlobal(
       "fetch",

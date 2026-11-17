@@ -1,4 +1,7 @@
-const RAW_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000/api";
+// Same-origin by default: the Vite dev/preview servers and vercel.json each proxy /api to
+// whichever Django instance is meant to answer. A hard-coded localhost would be baked
+// into the deployed bundle and send every visitor's requests to their own machine.
+const RAW_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 export const API_BASE = RAW_BASE.replace(/\/+$/, "");
 
 const ACCESS_KEY = "codeher.access";
@@ -109,9 +112,15 @@ function buildQuery(params) {
   return query ? `?${query}` : "";
 }
 
+/** Unauthenticated endpoints whose 401 means "wrong credentials". */
+const AUTH_ENTRY_PATHS = ["/auth/login/", "/auth/register/", "/auth/password/forgot/", "/auth/password/reset/"];
+
 async function request(path, { method = "GET", body, params, formData, headers, retry = true, signal } = {}) {
   const isForm = formData instanceof FormData;
   const token = tokenStore.access;
+  // These endpoints answer 401 to mean "wrong credentials", not "your session expired",
+  // so a rejected attempt there must never refresh or clear the session in store.
+  const authEntry = AUTH_ENTRY_PATHS.includes(path);
 
   const init = {
     method,
@@ -134,7 +143,7 @@ async function request(path, { method = "GET", body, params, formData, headers, 
     throw new ApiError(0, { detail: "Cannot reach the CodeHer API. Is the backend running?" });
   }
 
-  if (response.status === 401 && retry && tokenStore.refresh) {
+  if (response.status === 401 && !authEntry && retry && tokenStore.refresh) {
     const fresh = await refreshAccessToken();
     if (fresh) {
       return request(path, { method, body, params, formData, headers, retry: false, signal });
@@ -152,7 +161,7 @@ async function request(path, { method = "GET", body, params, formData, headers, 
     : await response.text().catch(() => null);
 
   if (!response.ok) {
-    if (response.status === 401) loseSession();
+    if (response.status === 401 && !authEntry) loseSession();
     throw new ApiError(response.status, payload);
   }
   return payload;
