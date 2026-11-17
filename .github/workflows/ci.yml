@@ -168,8 +168,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      # No npm ci here: the runner has no dependencies and no lockfile, so the
-      # cache step would fail on a file that does not exist.
+      # `npm ci` is render.yaml's buildCommand for this service, so CI runs it too: that
+      # is the only thing that fails here if the lockfile is missing or drifts, instead of
+      # the first production deploy discovering it. The dependency set is empty, which is
+      # why the lockfile has to be committed rather than assumed.
+      - name: Install with the deployment command
+        run: npm ci --no-audit --no-fund
       - name: Start the sandbox and exercise it
         env:
           RUNNER_PORT: "8090"
