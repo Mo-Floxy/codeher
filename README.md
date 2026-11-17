@@ -197,6 +197,13 @@ Sign in with the email address. The seed prints these when it finishes:
 They are **demonstration accounts created by the seed command**, labelled as
 such in the interface. Real members must register through `/signup`.
 
+Because these passwords are in a public repository, `manage.py seed` refuses to
+run against a database that is not on this machine — a stray `python manage.py
+seed` with a TiDB `.env` would otherwise create a live admin login anyone reading
+GitHub can use. `--force` overrides that for a disposable database you own. The
+sign-in page only offers the one-click demo buttons in a development build;
+`vite build` strips them.
+
 ### Creating your own administrator
 
 ```powershell

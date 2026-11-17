@@ -10,13 +10,17 @@ Run it after `manage.py migrate`:
 
     python manage.py seed
     python manage.py seed --no-progress   # content only, no simulated activity
+
+It refuses to run against a database that is not on this machine, because the demo
+accounts it creates have passwords published in this repository; `--force` overrides
+that once you have confirmed the database is disposable.
 """
 
 from datetime import timedelta
 
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.core.management.base import BaseCommand, CommandError
+from django.db import connections, transaction
 from django.utils import timezone
 
 from apps.achievements import services as badge_services
@@ -61,13 +65,44 @@ def curriculum_paths():
     return ordered + sorted(found.values(), key=lambda path: path["title"])
 
 
+def local_database(database):
+    """True when a connection cannot possibly be a shared or production cluster.
+
+    SQLite is a file on this machine, and an empty or loopback host is a server on this
+    machine. Everything else is somebody else's database, however casually it is named.
+    """
+    host = (database.get("HOST") or "").strip().lower()
+    return database["ENGINE"].endswith("sqlite3") or host in {"", "127.0.0.1", "localhost", "::1"}
+
+
 class Command(BaseCommand):
     help = "Create sample courses, challenges, badges, accounts and community content."
 
     def add_arguments(self, parser):
         parser.add_argument("--no-progress", action="store_true", help="Skip the simulated learner activity.")
+        parser.add_argument(
+            "--force", action="store_true", help="Seed a database that is not on this machine anyway."
+        )
+
+    def refuse_remote_database(self, force):
+        """Stop the demo accounts from being written into a real cluster.
+
+        Their passwords live in this repository, in plain sight, and the README tells
+        people to run this command — so an environment whose .env points at TiDB Cloud
+        would otherwise gain a working admin login that anyone reading GitHub has.
+        """
+        database = connections["default"].settings_dict
+        if force or local_database(database):
+            return
+        raise CommandError(
+            f"Refusing to seed {database.get('NAME')} on {database.get('HOST')}: the demo "
+            "accounts in apps/core/seed/community_seed.py have published passwords. Pass "
+            "--force if this is a disposable database you control."
+        )
 
     def handle(self, *args, **options):
+        self.refuse_remote_database(options["force"])
+
         # A missing migration must never be papered over by a partial seed.
         call_command("migrate", verbosity=0, interactive=False)
 
