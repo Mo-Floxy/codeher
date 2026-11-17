@@ -90,6 +90,11 @@ jobs:
         image: mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: ci-root-password
+          # The image only creates this schema at init, and makemigrations opens a real
+          # connection to NAME to ask the server which features it has: without it the
+          # step dies on "Unknown database" before it can compare models to migrations.
+          # pytest still creates and drops its own test_codeher_test alongside it.
+          MYSQL_DATABASE: codeher_test
         ports:
           - 3306:3306
         options: >-
