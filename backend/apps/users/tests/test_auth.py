@@ -283,7 +283,7 @@ class TestProfile:
         owner.profile.save(update_fields=["show_badges"])
         stranger = api(make_user("nia")).get(f"/api/users/{owner.pk}/badges/").json()
         assert stranger == {"badges": [], "count": 0, "hidden": True}
-        assert api(owner).get(f"/api/users/{owner.pk}/badges/")["hidden"] is False
+        assert api(owner).get(f"/api/users/{owner.pk}/badges/").json()["hidden"] is False
 
     def test_display_name_change_persists(self):
         user = make_user("ada")
