@@ -58,7 +58,8 @@ codeher/
 
 - **Python 3.12 or newer** (developed on 3.14) — `python --version`
 - **Node.js 18 or newer** (developed on 23) — `node --version`
-- **MySQL 8.4 / 9.x**, or use the SQLite fallback below
+- **MySQL 8.4 / 9.x**, or a **TiDB Cloud Starter** cluster (TiDB speaks the MySQL
+  protocol, so nothing in the code changes), or the SQLite fallback below
 - Git for Windows
 
 > On Windows, `python` in `PATH` is often the Microsoft Store alias that starts
@@ -114,11 +115,18 @@ cd C:\Users\HP\Documents\Qoder\2026-10-21\f62a1663\codeher\frontend
 
 npm install
 Copy-Item .env.example .env
-notepad .env          # VITE_API_BASE_URL defaults to http://127.0.0.1:8000/api
+notepad .env          # optional: VITE_PROXY_TARGET, VITE_SOCIAL_* — the API base
+                      # defaults to same-origin /api and vite.config.js proxies it
 
 npm run dev           # http://127.0.0.1:5173
 npm run build         # production bundle in dist/
+npm run preview       # http://localhost:4173, same proxy, real bundle
 ```
+
+The frontend never calls a hard-coded backend host: it requests `/api` and `/media`
+on its own origin, and `vite.config.js` proxies those to Django (`npm run dev` and
+`npm run preview`), while `vercel.json` does the same in production. If Django is not
+on `127.0.0.1:8000`, set `VITE_PROXY_TARGET`.
 
 ### No MySQL yet? Use SQLite
 
@@ -205,6 +213,14 @@ There are two admin surfaces:
 ---
 
 ## What is implemented
+
+**Interface** — dark glassmorphism design system, responsive sidebar for signed-in
+members, Framer Motion transitions that stand down under `prefers-reduced-motion`,
+and generated artwork instead of text placeholders: each course card paints the
+learning path's own `color` and `icon` from the database (`src/components/CourseCover.jsx`),
+and a member without an uploaded photo gets a deterministic gradient illustration
+keyed to their account id (`Avatar` in `src/components/ui/Display.jsx`) — never a
+drawn face and never initials.
 
 **Public pages** — Home (hero, impact statistics, featured paths, how it works,
 featured projects, mentorship, sample testimonials, final CTA), About, learning
@@ -297,10 +313,13 @@ absent), and field-level validation errors.
 ## Testing
 
 ```powershell
-# Backend unit and API tests — 8 modules, always on SQLite
+# Backend unit and API tests — 179 tests, always on SQLite
 cd C:\Users\HP\Documents\Qoder\2026-10-21\f62a1663\codeher\backend
 .\.venv\Scripts\Activate.ps1
 python -m pytest
+
+# Fail if any constraint would be silently skipped on MySQL/TiDB
+python scripts\check_mysql_compatibility.py
 
 # Runner self-checks (the runner must be running)
 cd ..\runner
@@ -345,21 +364,117 @@ of pretending:
   `VITE_SOCIAL_LINKEDIN_URL`, `VITE_SOCIAL_COMMUNITY_URL`,
   `VITE_SOCIAL_FEED_URL` in `frontend/.env`. Unset entries render no icon, so
   the footer never links to somebody else's profile.
-- **Hardened challenge execution** — the bundled runner is a localhost service
-  suitable for development. For public deployment, put `runner/` behind a real
-  jail (Docker with `--network=none`, dropped capabilities, cgroup limits, or
-  Firecracker/gVisor) and keep `RUNNER_SHARED_SECRET` out of the repo.
+- **Hardened challenge execution** — `render.yaml` deploys `runner/` as its own
+  service, which keeps learner code out of Django's process and answers only `POST
+  /run` with the shared secret. That is isolation, not a jail: the bundled runner
+  relies on `node:vm` and a Python subprocess with an AST allowlist, which a
+  determined caller can probe. For real public traffic, put the same service behind
+  Docker with `--network=none`, dropped capabilities and cgroup limits, or move it
+  to Firecracker/gVisor, and keep `RUNNER_SHARED_SECRET` out of the repository.
+  The `dev-runner-secret` default in `.env.example` is a placeholder — replace it on
+  both services before deploying.
 - **Avatar storage** — local `MEDIA_ROOT` by default. Point Django at object
   storage (`django-storages`) if you need shared storage across instances.
 
 ---
 
+## Deploying on the free tier (TiDB Cloud + Render + Vercel)
+
+`render.yaml` at the repository root defines both backend services, so Render
+creates them from the blueprint instead of you clicking through two dashboards.
+Everything below is the order that works; the only paid requirement is none.
+
+### 1. TiDB Cloud Starter (the database)
+
+TiDB speaks the MySQL wire protocol, so Django uses its MySQL backend and no
+code changes are needed.
+
+1. Create a **Starter** cluster in the TiDB Cloud console and note the
+   administrator credentials, the host string (it ends in `.tidbcloud.com`) and
+   the cluster's database name.
+2. Download the cluster's CA certificate from the console's *Connect* panel and
+   keep it somewhere the deployment can read it, or paste the certificate text
+   into `MYSQL_SSL_CA`. TiDB requires TLS; without the CA the connection is
+   rejected.
+3. Create the schema and app user with `backend/setup.sql`, or let Django's
+   migrations create the tables and use the cluster's admin user for the first
+   deploy.
+4. Never paste the database password into a chat, an issue, or a commit. Put it
+   in `backend/.env` locally, and in Render's environment-variable form for the
+   deployed service — `render.yaml` marks those keys `sync: false`, which means
+   Render asks you for them rather than reading a committed value.
+
+### 2. Render (API + runner)
+
+1. Push this repository to GitHub, then **New → Blueprint** and pick it. Render
+   reads `render.yaml` and offers `codeher-api` (Python) and `codeher-runner`
+   (Node).
+2. Fill in the secret values it asks for: `DJANGO_SECRET_KEY`,
+   `JWT_SIGNING_KEY`, `MYSQL_HOST`, `MYSQL_PASSWORD`, `MYSQL_SSL_CA`,
+   `RUNNER_BASE_URL`, `RUNNER_SHARED_SECRET`, and the `EMAIL_*` keys if you want
+   password-reset mail to actually send.
+3. `RUNNER_SHARED_SECRET` must be identical on both services, and
+   `RUNNER_BASE_URL` must be the runner's own `https://…onrender.com` URL, or
+   every challenge submission answers 401.
+4. Replace the placeholder hostnames in `render.yaml` (`codeher-api.onrender.com`,
+   `codeher-frontend.vercel.app`) with the real ones once you have them.
+5. Migrations run inside `buildCommand` — Render's separate *pre-deploy* command
+   is a paid feature, and the build environment can reach TiDB because it is an
+   external host.
+6. If the 0003 integrity migrations stop with a list of duplicate ids, that is
+   the guard doing its job: it will not delete rows to make an index fit. Review
+   the duplicates, then set `CODEHER_ALLOW_DEDUPE=1` for one deploy.
+
+The free instance's filesystem is wiped on every deploy, so uploaded avatars and
+screenshots do not survive unless you attach a disk and set
+`SERVE_MEDIA_IN_PRODUCTION=1`; with no disk, leave it off and accept that the
+media rows outlive their files. Object storage is the real fix.
+
+### 3. Vercel (frontend)
+
+1. Import the repo, set **Root Directory** to `frontend`. Framework detection and
+   `vercel.json` handle `npm run build` and the `dist` output.
+2. Leave `VITE_API_BASE_URL` unset. `frontend/vercel.json` proxies `/api` and
+   `/media` to the Render host, which keeps the browser same-origin so no CORS
+   configuration is needed and the SPA deep links (`/dashboard`, `/community/…`)
+   resolve instead of 404ing.
+3. Update those two `destination` URLs to your real Render host, then set
+   `DJANGO_ALLOWED_HOSTS` to it in Render.
+4. Prefer a direct cross-origin call instead? Set `VITE_API_BASE_URL` to
+   `https://<service>.onrender.com/api` and add
+   `https://<project>.vercel.app` to `CORS_ALLOWED_ORIGINS` and
+   `DJANGO_CSRF_TRUSTED_ORIGINS`.
+
+### 4. After the first deploy
+
+```bash
+# one admin account, created against the live database
+python manage.py createsuperuser          # with MYSQL_* pointing at TiDB
+curl https://<service>.onrender.com/api/health/   # {"status":"ok","database":"up"}
+node runner/smoke-test.js                        # against the deployed runner
+```
+
+Then delete or rotate the seeded demo accounts — they share one password.
+
+### What the free tier costs you in feel
+
+Render's free web services sleep after idle and take 30–60s to wake; the first
+request after that is a cold start. `CONN_HEALTH_CHECKS` and the connect/read/
+write timeouts in `settings.py` turn a dropped serverless connection into a
+reconnect rather than a 500, but nothing can make the wake-up instant.
+
+---
+
 ## Known limitations
 
-- MySQL cannot express a *partial* unique index, so the few constraints that
-  depend on one (for example "one published slug per author") are enforced in
-  `clean()`/service code plus a plain index, and are covered by tests. SQLite
-  and MySQL therefore behave identically for the seeded data set.
+- MySQL and TiDB cannot create a conditional unique index, so the rules that
+  need one ("one like per user per target", "one open report per target", "one
+  live mentorship request per pair", "one notification per dedupe key") are
+  enforced by STORED generated columns plus plain unique indexes — see the
+  `0003_db_enforced_*` migrations and `backend/scripts/check_mysql_compatibility.py`,
+  which fails when a constraint would be silently skipped. SQLite and
+  MySQL/TiDB therefore enforce the same rule in the schema rather than only in
+  Python.
 - The runner's isolation is deliberate but not a production jail (see above).
   Python submissions need `PYTHON_BIN` pointing at a real interpreter; the
   Windows Store alias will make every submission time out.
