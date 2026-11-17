@@ -22,7 +22,9 @@ const { runPython, minimalEnv } = require("./lib/python");
 
 loadDotEnv(path.join(__dirname, ".env"));
 
-const PORT = Number(process.env.RUNNER_PORT || 8090);
+// Render and friends inject PORT and expect a listener on 0.0.0.0; the explicit
+// RUNNER_* names stay authoritative for local development.
+const PORT = Number(process.env.RUNNER_PORT || process.env.PORT || 8090);
 const HOST = process.env.RUNNER_HOST || "127.0.0.1";
 const SECRET = process.env.RUNNER_SHARED_SECRET || "";
 const PYTHON_BIN = process.env.PYTHON_BIN || "python";

@@ -1,0 +1,100 @@
+# Render blueprint for CodeHer — free tier, MySQL-protocol TiDB Cloud Starter.
+#
+# `sync: false` means Render asks you for the value in the dashboard instead of
+# reading it from this file, so no secret is ever committed. Fill each one once and
+# Render stores it against the service.
+#
+# Push the branch, then in Render: New → Blueprint → pick this repo. It offers to create
+# both services below.
+
+services:
+  - type: web
+    name: codeher-api
+    runtime: python
+    plan: free
+    region: oregon
+    rootDir: backend
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /api/health/
+    # TiDB is an external host, so it is reachable from the build environment; running
+    # migrations here avoids needing Render's paid pre-deploy command.
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate --noinput
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --access-logfile - --error-logfile -
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings
+      - key: DB_ENGINE
+        value: mysql
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: codeher-api.onrender.com
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://codeher-frontend.vercel.app
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        value: https://codeher-frontend.vercel.app
+      - key: FRONTEND_ORIGIN
+        value: https://codeher-frontend.vercel.app
+      - key: MYSQL_DATABASE
+        value: codeher
+      - key: MYSQL_USER
+        value: codeher_app
+      - key: MYSQL_PORT
+        value: "3306"
+      # Free tier: never set MYSQL_CONN_MAX_AGE. Serverless proxies close idle
+      # connections, and CONN_HEALTH_CHECKS (already on) reopens them per request.
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: JWT_SIGNING_KEY
+        sync: false
+      - key: MYSQL_HOST
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: MYSQL_SSL_CA
+        sync: false
+      - key: RUNNER_BASE_URL
+        sync: false
+      - key: RUNNER_SHARED_SECRET
+        sync: false
+      # Password-reset mail. Without these the console backend is used and the API says
+      # so instead of claiming an email was sent.
+      - key: DJANGO_EMAIL_BACKEND
+        sync: false
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        sync: false
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+
+  # Challenge execution runs out of process, so a submission can never take the web app
+  # down with it. It answers only POST /run, and only with the shared secret header.
+  - type: web
+    name: codeher-runner
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: runner
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /health
+    buildCommand: npm ci
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Render routes $PORT to the container, which requires binding all interfaces.
+      - key: RUNNER_HOST
+        value: 0.0.0.0
+      - key: RUNNER_MAX_CODE_BYTES
+        value: "20000"
+      - key: RUNNER_SHARED_SECRET
+        sync: false
