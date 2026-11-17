@@ -518,6 +518,12 @@
   object-fit: cover;
 }
 
+.avatar__art {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .avatar--sm {
   width: 30px;
   height: 30px;

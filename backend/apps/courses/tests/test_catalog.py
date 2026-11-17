@@ -32,33 +32,37 @@ def make_path(title="React Development", **overrides):
     return LearningPath.objects.create(title=title, description="Build interfaces.", level="beginner", **overrides)
 
 
-def make_course(path, title="Hooks in Practice", instructor=None, **overrides):
-    return Course.objects.create(
-        title=title,
-        subtitle="State, effects and refs.",
-        description="A hands-on course about React hooks.",
-        level="intermediate",
-        category="react",
-        duration_hours=6,
-        learning_path=path,
-        instructor=instructor,
-        **overrides,
-    )
+def make_course(path, instructor=None, **overrides):
+    # Overrides are merged last so a test can change one field (level, category,
+    # duration) without colliding with the default keyword below it.
+    fields = {
+        "title": "Hooks in Practice",
+        "subtitle": "State, effects and refs.",
+        "description": "A hands-on course about React hooks.",
+        "level": "intermediate",
+        "category": "react",
+        "duration_hours": 6,
+        "learning_path": path,
+        "instructor": instructor,
+    }
+    fields.update(overrides)
+    return Course.objects.create(**fields)
 
 
 def make_lessons(course, count=3, module=None, **overrides):
     module = module or CourseModule.objects.create(course=course, title="Unit 1", position=1)
-    return [
-        Lesson.objects.create(
-            course=course,
-            module=module,
-            title=f"Lesson {index + 1}",
-            position=index + 1,
-            body_blocks=[{"type": "paragraph", "text": "Content"}],
-            **overrides,
-        )
-        for index in range(count)
-    ]
+    lessons = []
+    for index in range(count):
+        fields = {
+            "course": course,
+            "module": module,
+            "title": f"Lesson {index + 1}",
+            "position": index + 1,
+            "body_blocks": [{"type": "paragraph", "text": "Content"}],
+        }
+        fields.update(overrides)
+        lessons.append(Lesson.objects.create(**fields))
+    return lessons
 
 
 def make_quiz_lesson(course, module):
@@ -93,7 +97,7 @@ class TestCatalog:
         row = body["results"][0]
         assert row["slug"] == "python-programming"
         assert row["course_count"] == 1
-        assert row["lesson_count"] == 2
+        assert [item["slug"] for item in row["courses"]] == ["python-basics"]
 
     def test_courses_are_public_and_paginated(self):
         path = make_path()

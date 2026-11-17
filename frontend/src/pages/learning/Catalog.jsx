@@ -4,6 +4,7 @@ import { useReducedMotion } from "framer-motion";
 import { BookOpen, Clock, Layers, LogIn, RotateCcw, SearchX, Users } from "lucide-react";
 import { api, endpoints } from "../../services/api";
 import { useAsync, useDebouncedValue } from "../../hooks";
+import { CourseCover } from "../../components/CourseCover";
 import { Stagger } from "../../components/motion";
 import {
   Avatar,
@@ -67,9 +68,7 @@ function CourseCard({ course, resumeTo }) {
         {course.thumbnail ? (
           <img src={course.thumbnail} alt="" loading="lazy" />
         ) : (
-          <span className="course-card__thumb-fallback" aria-hidden="true">
-            {String(course.title ?? "?").slice(0, 2).toUpperCase()}
-          </span>
+          <CourseCover path={course.path} />
         )}
         <span className="course-card__thumb-level">
           <LevelBadge level={course.level} />

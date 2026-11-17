@@ -29,6 +29,7 @@ import {
 } from "recharts";
 import { api, endpoints } from "../../services/api";
 import { useAsync } from "../../hooks";
+import { CourseCover } from "../../components/CourseCover";
 import {
   Badge,
   Button,
@@ -407,8 +408,8 @@ function RecommendedCourses({ courses }) {
     <div className="grid-auto">
       {courses.slice(0, 4).map((course) => (
         <Card key={course.id} hover to={`/learning/${course.slug ?? course.id}`} as="article">
-          <div className="course-card__thumb" style={{ aspectRatio: "16/7", marginBottom: "var(--sp-4)", background: "var(--brand-gradient-soft)" }}>
-            {course.thumbnail ? <img src={course.thumbnail} alt="" /> : course.title}
+          <div className="course-card__thumb" style={{ aspectRatio: "16/7", marginBottom: "var(--sp-4)" }}>
+            {course.thumbnail ? <img src={course.thumbnail} alt="" /> : <CourseCover path={course.path} />}
           </div>
           <LevelBadge level={course.level} />
           <h3 style={{ fontSize: "var(--fs-md)", marginTop: "var(--sp-2)" }}>{course.title}</h3>

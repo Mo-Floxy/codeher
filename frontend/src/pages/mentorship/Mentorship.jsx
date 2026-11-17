@@ -156,8 +156,10 @@ export default function Mentorship() {
             <span className="eyebrow">Mentorship</span>
             <h1>Find a mentor who has walked the path</h1>
             <p className="lead">
-              Every profile below is a real, approved CodeHer member. Browse by expertise, open a
-              profile, and send a request with your goal and availability.
+              Every profile below is a CodeHer member approved for the mentor role — the seed
+              ships labelled demonstration accounts, so look for &ldquo;sample&rdquo; in a name
+              while developing. Browse by expertise, open a profile, and send a request with your
+              goal and availability.
             </p>
           </div>
           {isAuthenticated && (
