@@ -1,0 +1,139 @@
+name: CI
+
+# Three suites, and the reason for the second one: config.test_settings runs on
+# in-memory SQLite so `pytest` needs no database server, and SQLite happily
+# creates the conditional unique indexes that MySQL and TiDB skip. The mysql
+# job is the only place the generated-column migrations and the duplicate
+# handling get executed against a server that behaves like production.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (SQLite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: No unapplied model changes
+        run: python manage.py makemigrations --check --dry-run
+      - name: Django system checks
+        run: python manage.py check --deploy
+        env:
+          # The throwaway key is the point of the check: W009 only fires because
+          # the fallback is still in place, and that warning is expected.
+          DJANGO_DEBUG: "False"
+      - name: Report the indexes MySQL and TiDB would skip
+        run: python scripts/check_mysql_compatibility.py
+      - name: Suite
+        run: python -m pytest
+
+  backend-mysql:
+    name: Backend (MySQL 8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    # TiDB announces itself as MySQL 8.0.11 and shares the wire protocol and the
+    # index limitations under test here, but it is not identical: no TiCDC, no
+    # serverless proxy. This job proves the DDL, not the cluster.
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pci-root-password"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Suite against a real MySQL-family server
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: "3306"
+          MYSQL_USER: root
+          MYSQL_PASSWORD: ci-root-password
+          MYSQL_TEST_DATABASE: codeher_test
+          # A fixed value, never a secret: this job has nothing to protect.
+          DJANGO_SECRET_KEY: ci-only-insecure-key
+          JWT_SIGNING_KEY: ci-only-insecure-key
+        run: python -m pytest -o DJANGO_SETTINGS_MODULE=config.mysql_test_settings
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Component and API tests
+        run: npm test
+      - name: Lint
+        run: npm run lint
+      - name: Production build
+        run: npm run build
+
+  runner:
+    name: Code runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # No npm ci here: the runner has no dependencies and no lockfile, so the
+      # cache step would fail on a file that does not exist.
+      - name: Start the sandbox and exercise it
+        env:
+          RUNNER_PORT: "8090"
+          RUNNER_SHARED_SECRET: ci-runner-secret
+        run: |
+          nohup node server.js > /tmp/runner.log 2>&1 &
+          for i in $(seq 1 20); do
+            curl -sf http://127.0.0.1:8090/health > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8090/health
+          node smoke-test.js
+          cat /tmp/runner.log
