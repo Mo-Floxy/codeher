@@ -65,6 +65,9 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    # Serves the collected admin/static assets from the web process, which is what a
+    # single Render service without an nginx sidecar needs.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -104,6 +107,27 @@ if DB_ENGINE == "sqlite":
         }
     }
 else:
+    # MySQL and TiDB Cloud share this branch: TiDB speaks the MySQL wire protocol and
+    # Django uses the same backend for both.
+    mysql_options = {
+        "charset": "utf8mb4",
+        # Every text column is utf8mb4 so emoji and accents survive round-trips.
+        "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
+        # Serverless proxies answer slowly while an instance wakes up; without this a
+        # cold start holds a request open indefinitely instead of failing fast.
+        "connect_timeout": int(env("MYSQL_CONNECT_TIMEOUT", 10)),
+        "read_timeout": int(env("MYSQL_READ_TIMEOUT", 30)),
+        "write_timeout": int(env("MYSQL_WRITE_TIMEOUT", 30)),
+    }
+    if env("MYSQL_SSL_CA"):
+        # TiDB Cloud Starter requires TLS and hands out its own CA bundle.
+        mysql_options["ssl"] = {
+            "ca": env("MYSQL_SSL_CA"),
+            "check_hostname": env_bool("MYSQL_SSL_CHECK_HOSTNAME", True),
+        }
+    elif env_bool("MYSQL_SSL", False):
+        mysql_options["ssl"] = {"ca": env("MYSQL_SSL_CA", "")}
+
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.mysql",
@@ -112,12 +136,11 @@ else:
             "PASSWORD": env("MYSQL_PASSWORD", ""),
             "HOST": env("MYSQL_HOST", "127.0.0.1"),
             "PORT": env("MYSQL_PORT", "3306"),
-            "CONN_MAX_AGE": int(env("MYSQL_CONN_MAX_AGE", 60)),
-            "OPTIONS": {
-                "charset": "utf8mb4",
-                # Every text column is utf8mb4 so emoji and accents survive round-trips.
-                "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
-            },
+            # A pooled connection to a serverless instance can be closed server-side at
+            # any moment; health checks turn that into a reconnect instead of a 500.
+            "CONN_MAX_AGE": int(env("MYSQL_CONN_MAX_AGE", 0 if not DEBUG else 60)),
+            "CONN_HEALTH_CHECKS": True,
+            "OPTIONS": mysql_options,
             "TEST": {"CHARSET": "utf8mb4", "COLLATION": "utf8mb4_unicode_ci"},
         }
     }
@@ -186,8 +209,19 @@ CORS_ALLOW_CREDENTIALS = False
 # ------------------------------------------------------------------ static/media
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+if not DEBUG:
+    # Hashed, gzipped/brotli assets served by WhiteNoise from this process.
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+    }
 MEDIA_URL = env("MEDIA_URL", "/media/")
 MEDIA_ROOT = Path(env("MEDIA_ROOT") or BASE_DIR / "media")
+# Uploaded avatars and project screenshots are files, not database rows. Render's free
+# instance filesystem is wiped on each deploy, so serving them from disk is a
+# development convenience: set SERVE_MEDIA_IN_PRODUCTION=1 only with a disk attached,
+# and point Django at object storage for anything that must survive a re-deploy.
+SERVE_MEDIA_IN_PRODUCTION = env_bool("SERVE_MEDIA_IN_PRODUCTION", False)
 
 # --------------------------------------------------------------------- languages
 LANGUAGE_CODE = "en-us"
@@ -252,6 +286,8 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     X_FRAME_OPTIONS = "DENY"
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = env("SECURE_REFERRER_POLICY", "same-origin")
 
 if DEBUG:
     REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = (

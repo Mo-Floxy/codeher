@@ -8,6 +8,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from django.db import IntegrityError
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
@@ -24,7 +25,7 @@ from rest_framework_simplejwt.views import TokenRefreshView as BaseTokenRefreshV
 from apps.achievements.models import UserAchievement
 from apps.community.services import toggle_follow
 from apps.core.permissions import IsAdmin
-from apps.users.models import Follow, User
+from apps.users.models import Follow, Profile, User
 from apps.users.serializers import (
     ForgotPasswordSerializer,
     LoginSerializer,
@@ -71,7 +72,7 @@ class RegisterView(APIView):
         except IntegrityError:
             raise ValidationError({"email": "That email is already registered."})
         return Response(
-            {"user": UserSerializer(user).data, **tokens_for(user)},
+            {"user": UserSerializer(user, context={"request": request}).data, **tokens_for(user)},
             status=status.HTTP_201_CREATED,
         )
 
@@ -83,9 +84,14 @@ class LoginView(APIView):
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            # Wrong credentials are a rejected identity (401); a malformed body stays 400.
+            # Both answers use the same wording, so accounts cannot be enumerated.
+            if "detail" in serializer.errors:
+                return Response({"detail": str(serializer.errors["detail"][0])}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         user = serializer.validated_data["user"]
-        return Response({"user": UserSerializer(user).data, **tokens_for(user)})
+        return Response({"user": UserSerializer(user, context={"request": request}).data, **tokens_for(user)})
 
 
 class LogoutView(APIView):
@@ -112,7 +118,7 @@ class MeView(APIView):
     def get(self, request):
         return Response(
             {
-                "user": UserSerializer(request.user).data,
+                "user": UserSerializer(request.user, context={"request": request}).data,
                 "profile": ProfileSerializer(request.user.profile, context={"request": request}).data,
             }
         )
@@ -125,7 +131,7 @@ class MeView(APIView):
         if "email" in serializer.validated_data:
             request.user.is_email_verified = False
         request.user.save()
-        return Response(UserSerializer(request.user).data)
+        return Response(UserSerializer(request.user, context={"request": request}).data)
 
 
 class ForgotPasswordView(APIView):
@@ -285,12 +291,18 @@ class UserDirectoryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        users = User.objects.filter(is_active=True).select_related("profile").order_by("-profile__total_xp")
+        # The serializer is a Profile serializer, so query profiles directly instead of
+        # mapping User rows through it — that mismatch raised AttributeError on every hit.
+        profiles = (
+            Profile.objects.filter(user__is_active=True)
+            .select_related("user")
+            .order_by("-total_xp", "user__username")
+        )
         term = request.query_params.get("search", "").strip()
         if term:
-            users = users.filter(display_name__icontains=term) | users.filter(username__icontains=term)
-        users = list(users[:48])
-        payload = PublicProfileSerializer(users, many=True, context={"request": request}).data
+            profiles = profiles.filter(Q(user__display_name__icontains=term) | Q(user__username__icontains=term))
+        profiles = list(profiles[:48])
+        payload = PublicProfileSerializer(profiles, many=True, context={"request": request}).data
         return Response({"count": len(payload), "results": payload})
 
 
@@ -309,4 +321,4 @@ class AdminRoleUpdateView(APIView):
             if field in request.data:
                 setattr(user, field, request.data[field])
         user.save()
-        return Response(UserSerializer(user).data)
+        return Response(UserSerializer(user, context={"request": request}).data)
