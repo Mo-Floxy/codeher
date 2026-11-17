@@ -40,10 +40,11 @@ services:
         value: https://codeher-frontend.vercel.app
       - key: MYSQL_DATABASE
         value: codeher
-      - key: MYSQL_USER
-        value: codeher_app
       - key: MYSQL_PORT
-        value: "3306"
+        # TiDB Cloud Serverless listens on 4000, not 3306. A wrong port here does not
+        # look like a wrong port: the connection hangs until it times out, which reads
+        # exactly like the network allowlist blocking Render.
+        value: "4000"
       # Free tier: never set MYSQL_CONN_MAX_AGE. Serverless proxies close idle
       # connections, and CONN_HEALTH_CHECKS (already on) reopens them per request.
       - key: DJANGO_SECRET_KEY
@@ -51,6 +52,8 @@ services:
       - key: JWT_SIGNING_KEY
         sync: false
       - key: MYSQL_HOST
+        sync: false
+      - key: MYSQL_USER
         sync: false
       - key: MYSQL_PASSWORD
         sync: false

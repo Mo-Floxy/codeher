@@ -98,6 +98,14 @@ def check_database():
     ):
         if is_placeholder(read(name)):
             fatal(name, f"missing — {reason}")
+    host = read("MYSQL_HOST").strip().lower()
+    port = read("MYSQL_PORT").strip()
+    if host.endswith(".tidbcloud.com") and port not in {"", "4000"}:
+        fatal(
+            "MYSQL_PORT",
+            "TiDB Cloud Serverless listens on 4000; a wrong port hangs until it times out "
+            "and looks exactly like a blocked network allowlist",
+        )
     if is_placeholder(read("MYSQL_SSL_CA")) and not is_true(read("MYSQL_SSL")):
         warn(
             "MYSQL_SSL_CA",

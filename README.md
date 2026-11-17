@@ -410,20 +410,33 @@ deploy log and no request ever reaches the cluster. The pin in
 again, and CI's MySQL container is pinned to the 8.0 image precisely so that this fails in
 a workflow run rather than on a deploy.
 
-1. Create a **Starter** cluster in the TiDB Cloud console and note the
-   administrator credentials, the host string (it ends in `.tidbcloud.com`) and
-   the cluster's database name.
-2. Download the cluster's CA certificate from the console's *Connect* panel and
-   keep it somewhere the deployment can read it, or paste the certificate text
-   into `MYSQL_SSL_CA`. TiDB requires TLS; without the CA the connection is
-   rejected.
-3. Create the schema and app user with `backend/setup.sql`, or let Django's
+1. Create a **Starter** cluster in the TiDB Cloud console and note the four values
+   from the *Connect* panel: the host string, **port 4000** (not 3306 — Serverless
+   listens on 4000), the username and the database name. The username is not the
+   short one you picked; it is the cluster's own identifier, shaped like
+   `AbCdEf123.root` or `user%cluster-id`, and copying the wrong form fails
+   authentication in a way that looks like a bad password.
+2. Confirm the version the cluster declares by running `SELECT VERSION();` in the
+   SQL editor. It reports something like `8.0.11-TiDB-v7.1.5`, and that banner is
+   what decides which Django versions can connect at all — see the note above.
+3. Set the network allowlist (**Connect → Public**) to include `0.0.0.0/0`, or
+   whichever addresses your client actually comes from. Render's free tier has no
+   fixed outbound IPs — that is a paid feature — so a restricted allowlist rejects
+   every deployed request with a *timeout*, which reads exactly like a wrong port
+   or a firewalled host. This is also why the password is the only thing standing
+   between the internet and your data, and why it never belongs in chat.
+4. Download the cluster's CA certificate from the *Connect* panel and keep it
+   somewhere the deployment can read it, or paste the certificate text into
+   `MYSQL_SSL_CA`. TiDB requires TLS; without the CA the connection is rejected.
+5. Create the schema and app user with `backend/setup.sql`, or let Django's
    migrations create the tables and use the cluster's admin user for the first
    deploy.
-4. Never paste the database password into a chat, an issue, or a commit. Put it
+6. Never paste the database password into a chat, an issue, or a commit. Put it
    in `backend/.env` locally, and in Render's environment-variable form for the
    deployed service — `render.yaml` marks those keys `sync: false`, which means
-   Render asks you for them rather than reading a committed value.
+   Render asks you for them rather than reading a committed value. If a password
+   ever does get into a conversation or a log, rotate it in the console; nothing
+   else needs to change.
 
 ### 2. Render (API + runner)
 
@@ -431,9 +444,9 @@ a workflow run rather than on a deploy.
    reads `render.yaml` and offers `codeher-api` (Python) and `codeher-runner`
    (Node).
 2. Fill in the secret values it asks for: `DJANGO_SECRET_KEY`,
-   `JWT_SIGNING_KEY`, `MYSQL_HOST`, `MYSQL_PASSWORD`, `MYSQL_SSL_CA`,
-   `RUNNER_BASE_URL`, `RUNNER_SHARED_SECRET`, and the `EMAIL_*` keys if you want
-   password-reset mail to actually send.
+   `JWT_SIGNING_KEY`, `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`,
+   `MYSQL_SSL_CA`, `RUNNER_BASE_URL`, `RUNNER_SHARED_SECRET`, and the `EMAIL_*`
+   keys if you want password-reset mail to actually send.
 3. `RUNNER_SHARED_SECRET` must be identical on both services, and
    `RUNNER_BASE_URL` must be the runner's own `https://…onrender.com` URL, or
    every challenge submission answers 401.
