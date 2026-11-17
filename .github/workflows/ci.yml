@@ -87,7 +87,10 @@ jobs:
     # serverless proxy. This job proves the DDL, not the cluster.
     services:
       mysql:
-        image: mysql:8.0
+        # Django 6.1 refuses to connect below MySQL 8.4 — "MySQL 8.4 or later is
+        # required (found 8.0.46)" — so the 8.0 image fails during the very first
+        # connection, before any model is compared. 8.4 is the current LTS line.
+        image: mysql:8.4
         env:
           MYSQL_ROOT_PASSWORD: ci-root-password
           # The image only creates this schema at init, and makemigrations opens a real
