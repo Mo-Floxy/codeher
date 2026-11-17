@@ -36,6 +36,10 @@ PLACEHOLDERS = {
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "testserver", "0.0.0.0", "[::1]")
 
+# render.yaml and README ship hostnames like `your-api.onrender.com`. They are syntactically
+# valid and a real request to them fails, so they need their own message.
+TEMPLATE_HOST = "your-"
+
 issues = []
 
 
@@ -61,6 +65,10 @@ def is_true(value):
 
 def has_local_host(value):
     return any(token in value for token in LOCAL_HOSTS)
+
+
+def has_template_host(value):
+    return TEMPLATE_HOST in value
 
 
 def has_insecure_url(value):
@@ -119,6 +127,8 @@ def check_origins():
         fatal("DJANGO_ALLOWED_HOSTS", "wildcard turns off Host-header validation, which is what blocks cache poisoning")
     elif is_placeholder(hosts) or has_local_host(hosts.replace("testserver", "")):
         fatal("DJANGO_ALLOWED_HOSTS", "still only local hosts — every request to the real domain answers 400")
+    elif has_template_host(hosts):
+        fatal("DJANGO_ALLOWED_HOSTS", "still the placeholder hostname from the template")
     for name in ("CORS_ALLOWED_ORIGINS", "DJANGO_CSRF_TRUSTED_ORIGINS", "FRONTEND_ORIGIN"):
         value = read(name)
         if is_placeholder(value):
@@ -127,6 +137,12 @@ def check_origins():
             continue
         if has_local_host(value):
             fatal(name, "points at 127.0.0.1/localhost, which no browser on the internet can be")
+        elif has_template_host(value):
+            fatal(
+                name,
+                "still the placeholder hostname from the template — replace it with the URL "
+                "Render or Vercel actually gave you, or the site loads and every request is refused",
+            )
         elif has_insecure_url(value):
             warn(name, "uses http://; Render and Vercel both serve https and cookies here are Secure-only")
 
@@ -142,6 +158,8 @@ def check_runner():
         fatal("RUNNER_BASE_URL", "missing, so submissions cannot reach the runner at all")
     elif has_local_host(base):
         fatal("RUNNER_BASE_URL", "points at 127.0.0.1; on Render that is the API container itself, not the runner")
+    elif has_template_host(base):
+        fatal("RUNNER_BASE_URL", "still the placeholder hostname from the template — use the URL the runner service actually has")
     elif has_insecure_url(base):
         warn("RUNNER_BASE_URL", "uses http://, so the shared secret crosses the network in the clear")
 
