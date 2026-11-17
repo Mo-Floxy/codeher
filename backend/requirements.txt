@@ -1,4 +1,8 @@
-Django>=6.1.2,<6.2
+# Django 5.2 LTS, not 6.x: TiDB announces itself as MySQL 8.0.11 and Django 6.1 raised the
+# MySQL floor to 8.4, checked on every connect, so a 6.1 API cannot reach the cluster at all
+# (NotSupportedError before the first query). 5.2's floor is exactly 8.0.11 and it is
+# supported until April 2028. Do not bump this without re-checking the floor.
+Django>=5.2,<5.3
 djangorestframework>=3.16
 django-cors-headers>=4.4
 django-filter>=24.3

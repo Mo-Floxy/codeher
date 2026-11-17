@@ -59,9 +59,14 @@ def test_a_closed_request_frees_the_pair_and_keeps_history(learner, mentor):
 
     again = make_request(learner, mentor)
 
+    # Read the persisted columns, not the objects: Django 6.1 refreshes a generated column
+    # in memory after save(update_fields=...) and 5.2 does not, so `closed.live_flag` would
+    # say 1 here while the row the unique index actually sees already says NULL.
+    live_flags = dict(MentorshipRequest.objects.values_list("pk", "live_flag"))
+
     assert MentorshipRequest.objects.count() == 2
-    assert again.live_flag == 1
-    assert closed.live_flag is None
+    assert live_flags[again.pk] == 1
+    assert live_flags[closed.pk] is None
 
 
 def test_requests_for_different_partners_are_independent(learner, mentor, db):

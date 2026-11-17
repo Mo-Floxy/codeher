@@ -12,7 +12,7 @@ Three independent processes, no duplicated implementations:
 | Process   | Technology                             | Default address        |
 | --------- | -------------------------------------- | ---------------------- |
 | Frontend  | React 19 + Vite, Framer Motion, Recharts | http://127.0.0.1:5173 |
-| Backend   | Django 6 + Django REST Framework, MySQL | http://127.0.0.1:8000 |
+| Backend   | Django 5.2 LTS + Django REST Framework, MySQL | http://127.0.0.1:8000 |
 | Runner    | Node.js sandbox service                 | http://127.0.0.1:8090  |
 
 The backend is the only writer of application data. The frontend never talks to
@@ -58,8 +58,9 @@ codeher/
 
 - **Python 3.12 or newer** (developed on 3.14) — `python --version`
 - **Node.js 18 or newer** (developed on 23) — `node --version`
-- **MySQL 8.4 / 9.x**, or a **TiDB Cloud Starter** cluster (TiDB speaks the MySQL
-  protocol, so nothing in the code changes), or the SQLite fallback below
+- **MySQL 8.0.11 or newer** — that is Django 5.2's floor for the MySQL backend — or a
+  **TiDB Cloud Starter** cluster (TiDB self-reports as MySQL 8.0.11, which is inside the
+  floor, so nothing in the code changes), or the SQLite fallback below
 - Git for Windows
 
 > On Windows, `python` in `PATH` is often the Microsoft Store alias that starts
@@ -386,8 +387,16 @@ Everything below is the order that works; the only paid requirement is none.
 
 ### 1. TiDB Cloud Starter (the database)
 
-TiDB speaks the MySQL wire protocol, so Django uses its MySQL backend and no
-code changes are needed.
+TiDB speaks the MySQL wire protocol, so Django uses its MySQL backend and no code changes
+are needed — but the protocol is not the whole story. TiDB announces itself as
+`8.0.11-TiDB-v…` for compatibility, and Django checks the database version it declares on
+**every** connection. Django 6.1 raised the MySQL floor to 8.4, which puts TiDB below it:
+the connection fails with `NotSupportedError` before the first query, so no migration, no
+deploy log and no request ever reaches the cluster. The pin in
+`backend/requirements.txt` is therefore `Django>=5.2,<5.3` — 5.2's floor is exactly
+8.0.11 and it is supported until April 2028. Raising that pin means raising the question
+again, and CI's MySQL container is pinned to the 8.0 image precisely so that this fails in
+a workflow run rather than on a deploy.
 
 1. Create a **Starter** cluster in the TiDB Cloud console and note the
    administrator credentials, the host string (it ends in `.tidbcloud.com`) and
@@ -475,6 +484,15 @@ reconnect rather than a 500, but nothing can make the wake-up instant.
   which fails when a constraint would be silently skipped. SQLite and
   MySQL/TiDB therefore enforce the same rule in the schema rather than only in
   Python.
+- The three `CheckConstraint`s (`users.Follow.no_self_follow`,
+  `community.Engagement.exactly_one_engagement_target`,
+  `mentorship.MentorshipRequest.no_self_mentorship`) are **not** created on TiDB. TiDB
+  v6.3+ does enforce CHECK rules, but Django only emits them to a server claiming 8.0.16
+  or newer and TiDB's compatibility banner says 8.0.11, so the DDL is skipped. The same
+  rules are enforced in application code, which is what held them before the schema work;
+  `backend/scripts/check_mysql_compatibility.py` reports them as a tolerated gap rather
+  than failing, and the way to reclaim them is a `RunSQL` migration that adds each CHECK
+  explicitly, which bypasses the version gate.
 - The runner's isolation is deliberate but not a production jail (see above).
   Python submissions need `PYTHON_BIN` pointing at a real interpreter; the
   Windows Store alias will make every submission time out.
