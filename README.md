@@ -72,12 +72,14 @@ codeher/
 ## Quick start
 
 Open **three PowerShell windows**. Run the backend and the runner first; the
-frontend works without them but shows honest "API unavailable" states.
+frontend works without them but shows honest "API unavailable" states. Every `cd`
+below starts from the repository root — the folder that contains `backend\`,
+`frontend\` and `runner\`.
 
 ### 1. Backend (terminal 1)
 
 ```powershell
-cd C:\Users\HP\Documents\Qoder\2026-10-21\f62a1663\codeher\backend
+cd backend
 
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -99,7 +101,7 @@ learner progress produced through the actual completion services.
 ### 2. Sandbox runner (terminal 2)
 
 ```powershell
-cd C:\Users\HP\Documents\Qoder\2026-10-21\f62a1663\codeher\runner
+cd runner
 
 npm install
 Copy-Item .env.example .env
@@ -112,7 +114,7 @@ npm run smoke         # optional: 17 self-checks against the live service
 ### 3. Frontend (terminal 3)
 
 ```powershell
-cd C:\Users\HP\Documents\Qoder\2026-10-21\f62a1663\codeher\frontend
+cd frontend
 
 npm install
 Copy-Item .env.example .env
@@ -198,7 +200,7 @@ such in the interface. Real members must register through `/signup`.
 ### Creating your own administrator
 
 ```powershell
-cd C:\Users\HP\Documents\Qoder\2026-10-21\f62a1663\codeher\backend
+cd backend
 .\.venv\Scripts\Activate.ps1
 python manage.py createsuperuser
 ```
@@ -315,12 +317,15 @@ absent), and field-level validation errors.
 
 ```powershell
 # Backend unit and API tests — 179 tests, always on SQLite
-cd C:\Users\HP\Documents\Qoder\2026-10-21\f62a1663\codeher\backend
+cd backend
 .\.venv\Scripts\Activate.ps1
 python -m pytest
 
 # Fail if any constraint would be silently skipped on MySQL/TiDB
 python scripts\check_mysql_compatibility.py
+
+# Report misconfigured deployment variables — names only, never values
+python scripts\check_deployment_env.py --dotenv .env
 
 # Runner self-checks (the runner must be running)
 cd ..\runner
@@ -433,6 +438,15 @@ a workflow run rather than on a deploy.
 6. If the 0003 integrity migrations stop with a list of duplicate ids, that is
    the guard doing its job: it will not delete rows to make an index fit. Review
    the duplicates, then set `CODEHER_ALLOW_DEDUPE=1` for one deploy.
+7. Before that first deploy, run
+   `python scripts\check_deployment_env.py --dotenv .env` (or the same
+   command with no flag inside Render's shell) to see which variables are
+   missing, still placeholders, or quietly using a development default. It
+   reports names and never values, so its output is safe to paste into an
+   issue. This is the check that catches a blueprint that deploys green and
+   then answers 400 to every request because `DJANGO_ALLOWED_HOSTS` is still
+   `127.0.0.1`, or whose runner accepts code from anyone because
+   `RUNNER_SHARED_SECRET` was never set.
 
 The free instance's filesystem is wiped on every deploy, so uploaded avatars and
 screenshots do not survive unless you attach a disk and set
