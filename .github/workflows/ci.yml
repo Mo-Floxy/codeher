@@ -27,6 +27,12 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # config.settings falls back to the mysql branch when DB_ENGINE is unset, and
+    # this job has no database server, so manage.py would try to reach 127.0.0.1:3306
+    # and die on a connection error before it could say anything about the models.
+    # Locally .env hides this; CI does not.
+    env:
+      DB_ENGINE: sqlite
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,7 +52,14 @@ jobs:
       - name: Report the indexes MySQL and TiDB would skip
         run: python scripts/check_mysql_compatibility.py
       - name: Suite
-        run: python -m pytest
+        run: |
+          set -o pipefail
+          python -m pytest 2>&1 | tee /tmp/pytest.log
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 140 /tmp/pytest.log | python scripts/ci_annotate.py
+            exit "$status"
+          fi
 
   backend-mysql:
     name: Backend (MySQL 8)
@@ -55,6 +68,16 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # A fixed value, never a secret: this job has nothing to protect. The
+    # container is created per run and thrown away with the runner.
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ci-root-password
+      MYSQL_TEST_DATABASE: codeher_test
+      DJANGO_SECRET_KEY: ci-only-insecure-key
+      JWT_SIGNING_KEY: ci-only-insecure-key
     # TiDB announces itself as MySQL 8.0.11 and shares the wire protocol and the
     # index limitations under test here, but it is not identical: no TiCDC, no
     # serverless proxy. This job proves the DDL, not the cluster.
@@ -76,17 +99,26 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
+      - name: No unapplied model changes on the MySQL branch
+        run: |
+          set -o pipefail
+          python manage.py makemigrations --check --dry-run \
+            --settings=config.mysql_test_settings 2>&1 | tee /tmp/migrations.log
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 140 /tmp/migrations.log | python scripts/ci_annotate.py
+            exit "$status"
+          fi
       - name: Suite against a real MySQL-family server
-        env:
-          MYSQL_HOST: 127.0.0.1
-          MYSQL_PORT: "3306"
-          MYSQL_USER: root
-          MYSQL_PASSWORD: ci-root-password
-          MYSQL_TEST_DATABASE: codeher_test
-          # A fixed value, never a secret: this job has nothing to protect.
-          DJANGO_SECRET_KEY: ci-only-insecure-key
-          JWT_SIGNING_KEY: ci-only-insecure-key
-        run: python -m pytest -o DJANGO_SETTINGS_MODULE=config.mysql_test_settings
+        run: |
+          set -o pipefail
+          python -m pytest -o DJANGO_SETTINGS_MODULE=config.mysql_test_settings \
+            --tb=short -q 2>&1 | tee /tmp/pytest.log
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 140 /tmp/pytest.log | python scripts/ci_annotate.py
+            exit "$status"
+          fi
 
   frontend:
     name: Frontend
