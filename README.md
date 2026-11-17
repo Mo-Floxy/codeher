@@ -490,15 +490,26 @@ media rows outlive their files. Object storage is the real fix.
 
 ### 3. Vercel (frontend)
 
-1. Import the repo, set **Root Directory** to `frontend`. Framework detection and
-   `vercel.json` handle `npm run build` and the `dist` output.
+1. Import the repo. Vercel sees `backend`, `frontend` and `runner` as three
+   separate applications and marks one of them for you, so check that **Root
+   Directory** reads `frontend` before continuing: accepting its first offer
+   silently creates a *Django* project that cannot build here. Framework
+   detection and `vercel.json` then handle `npm run build` and the `dist` output.
 2. Leave `VITE_API_BASE_URL` unset. `frontend/vercel.json` proxies `/api` and
    `/media` to the Render host, which keeps the browser same-origin so no CORS
    configuration is needed and the SPA deep links (`/dashboard`, `/community/…`)
    resolve instead of 404ing.
-3. Update those two `destination` URLs to your real Render host, then set
-   `DJANGO_ALLOWED_HOSTS` to it in Render.
-4. Prefer a direct cross-origin call instead? Set `VITE_API_BASE_URL` to
+3. Give the project the name **`codeher-frontend`** if it is available. `render.yaml`
+   already lists `https://codeher-frontend.vercel.app` as its CORS, CSRF and
+   `FRONTEND_ORIGIN` value, so an exact match means there is nothing to edit; any
+   other name gets a random suffix (`-ten`, `-sandy-three`) and you must then
+   replace those three values in `render.yaml`, because a wrong one lets the page
+   load and refuse every API call. Note that `curl` cannot tell you which name is
+   free: Vercel answers 404 both for an unclaimed subdomain and for one that does
+   not exist, so only the URL it assigns after the deploy is evidence.
+4. Update the two `destination` URLs in `frontend/vercel.json` to your real Render
+   host if it differs from `codeher-api.onrender.com`.
+5. Prefer a direct cross-origin call instead? Set `VITE_API_BASE_URL` to
    `https://<service>.onrender.com/api` and add
    `https://<project>.vercel.app` to `CORS_ALLOWED_ORIGINS` and
    `DJANGO_CSRF_TRUSTED_ORIGINS`.
