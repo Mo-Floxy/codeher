@@ -33,11 +33,45 @@ def env_list(key, default=None):
     return [item.strip() for item in str(value).split(",") if item.strip()]
 
 
+LOCAL_DB_HOSTS = {"", "127.0.0.1", "localhost", "::1", "0.0.0.0"}
+
+
+def mysql_ssl_options(host, ca="", check_hostname=True, force=False):
+    """Build the PyMySQL ``ssl`` argument that actually authenticates the server.
+
+    PyMySQL encrypts even with no ``ssl`` argument, but only sets
+    ``check_hostname=False`` and ``verify_mode=CERT_NONE`` in that case, so "encrypted"
+    there still means anyone on the path can terminate TLS and read the credentials.
+    Handing it a non-empty dict restores the OpenSSL defaults, and ``{"ca": ""}`` means
+    "use the operating system trust store" - which already contains the Let's Encrypt root
+    that TiDB Cloud Starter serves, so no certificate file has to be shipped.
+
+    Local hosts are left unverified on purpose: a development MySQL uses a self-signed
+    certificate, and CI's container must keep connecting.
+    """
+    if ca:
+        return {"ca": ca, "check_hostname": bool(check_hostname)}
+    if check_hostname and (force or str(host).strip().lower() not in LOCAL_DB_HOSTS):
+        return {"ca": ""}
+    return {}
+
+
 # ------------------------------------------------------------------ security
 SECRET_KEY = env("DJANGO_SECRET_KEY", "insecure-dev-only-change-me")
 DEBUG = env_bool("DJANGO_DEBUG", True)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", ["127.0.0.1", "localhost", "testserver"])
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", ["http://127.0.0.1:5173", "http://localhost:5173"])
+
+# Render injects each service's own hostname. Trusting it means a service that is renamed in
+# the dashboard, or deployed before DJANGO_ALLOWED_HOSTS was filled in, still serves traffic
+# instead of Django answering 400 (and /django-admin/ answering 403) before any view runs.
+RENDER_HOST = env("RENDER_EXTERNAL_HOSTNAME")
+if RENDER_HOST:
+    if RENDER_HOST not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(RENDER_HOST)
+    render_origin = f"https://{RENDER_HOST}"
+    if render_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(render_origin)
 
 # ---------------------------------------------------------------------- apps
 INSTALLED_APPS = [
@@ -119,14 +153,16 @@ else:
         "read_timeout": int(env("MYSQL_READ_TIMEOUT", 30)),
         "write_timeout": int(env("MYSQL_WRITE_TIMEOUT", 30)),
     }
-    if env("MYSQL_SSL_CA"):
-        # TiDB Cloud Starter requires TLS and hands out its own CA bundle.
-        mysql_options["ssl"] = {
-            "ca": env("MYSQL_SSL_CA"),
-            "check_hostname": env_bool("MYSQL_SSL_CHECK_HOSTNAME", True),
-        }
-    elif env_bool("MYSQL_SSL", False):
-        mysql_options["ssl"] = {"ca": env("MYSQL_SSL_CA", "")}
+    # TiDB Cloud enforces TLS ("Connections using insecure transport are prohibited"), so
+    # the only question is whether the server is verified as well. It is, by default.
+    ssl_options = mysql_ssl_options(
+        env("MYSQL_HOST", "127.0.0.1"),
+        ca=env("MYSQL_SSL_CA", ""),
+        check_hostname=env_bool("MYSQL_SSL_CHECK_HOSTNAME", True),
+        force=env_bool("MYSQL_SSL", False),
+    )
+    if ssl_options:
+        mysql_options["ssl"] = ssl_options
 
     DATABASES = {
         "default": {

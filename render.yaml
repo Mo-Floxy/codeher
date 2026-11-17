@@ -12,7 +12,11 @@ services:
     name: codeher-api
     runtime: python
     plan: free
-    region: oregon
+    # Frankfurt because the database is: the cluster is TiDB Cloud eu-central-1, and the free
+    # tier runs with MYSQL_CONN_MAX_AGE unset (serverless proxies drop idle connections), so
+    # every request opens a fresh connection. From Oregon that is a transatlantic TCP+TLS
+    # handshake per request before any query runs. Regions cannot be changed after creation.
+    region: frankfurt
     rootDir: backend
     branch: main
     autoDeploy: true
@@ -57,8 +61,9 @@ services:
         sync: false
       - key: MYSQL_PASSWORD
         sync: false
-      - key: MYSQL_SSL_CA
-        sync: false
+      # Deliberately absent: MYSQL_SSL_CA. TiDB Cloud serves a Let's Encrypt certificate and
+      # settings.py already requests verification against the operating system trust store,
+      # which Render's Ubuntu image has. Set it only to pin your own bundle.
       - key: RUNNER_BASE_URL
         sync: false
       - key: RUNNER_SHARED_SECRET
@@ -84,7 +89,9 @@ services:
     name: codeher-runner
     runtime: node
     plan: free
-    region: oregon
+    # Alongside the API. The runner is reached over its public onrender.com URL with a shared
+    # secret, so this is about the latency of that hop per code submission, not private networking.
+    region: frankfurt
     rootDir: runner
     branch: main
     autoDeploy: true

@@ -425,9 +425,17 @@ a workflow run rather than on a deploy.
    every deployed request with a *timeout*, which reads exactly like a wrong port
    or a firewalled host. This is also why the password is the only thing standing
    between the internet and your data, and why it never belongs in chat.
-4. Download the cluster's CA certificate from the *Connect* panel and keep it
-   somewhere the deployment can read it, or paste the certificate text into
-   `MYSQL_SSL_CA`. TiDB requires TLS; without the CA the connection is rejected.
+4. Do not hunt for a CA bundle. TiDB Cloud Starter/Essential serves a **Let's
+   Encrypt** certificate rather than a cluster-specific one, and PyMySQL checks it
+   against the operating system trust store — which Render's Ubuntu image and your
+   Windows machine both already contain. `MYSQL_SSL_CA` exists only for pinning a
+   bundle of your own, and the deployed service no longer asks for it.
+   The one setting that does matter is the opposite: never set
+   `MYSQL_SSL_CHECK_HOSTNAME=false`. The driver then still encrypts but accepts any
+   certificate, so someone on the path can terminate the TLS and read the password.
+   Measured against a live gateway, the default gives
+   `check_hostname=True, verify_mode=CERT_REQUIRED` and reaches authentication,
+   while that flag gives `CERT_NONE`.
 5. Create the schema and app user with `backend/setup.sql`, or let Django's
    migrations create the tables and use the cluster's admin user for the first
    deploy.
@@ -445,20 +453,27 @@ a workflow run rather than on a deploy.
    (Node).
 2. Fill in the secret values it asks for: `DJANGO_SECRET_KEY`,
    `JWT_SIGNING_KEY`, `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`,
-   `MYSQL_SSL_CA`, `RUNNER_BASE_URL`, `RUNNER_SHARED_SECRET`, and the `EMAIL_*`
+   `RUNNER_BASE_URL`, `RUNNER_SHARED_SECRET`, and the `EMAIL_*`
    keys if you want password-reset mail to actually send.
 3. `RUNNER_SHARED_SECRET` must be identical on both services, and
    `RUNNER_BASE_URL` must be the runner's own `https://…onrender.com` URL, or
    every challenge submission answers 401.
 4. Replace the placeholder hostnames in `render.yaml` (`codeher-api.onrender.com`,
    `codeher-frontend.vercel.app`) with the real ones once you have them.
-5. Migrations run inside `buildCommand` — Render's separate *pre-deploy* command
+   `DJANGO_ALLOWED_HOSTS` is the forgiving one: Render injects
+   `RENDER_EXTERNAL_HOSTNAME` and settings.py trusts it, so a renamed service still
+   answers. The CORS and `FRONTEND_ORIGIN` values are not guessed for you — a wrong
+   one lets the page load and refuse every API call.
+5. Both services deploy to **Frankfurt**, deliberately: the cluster is in
+   `eu-central-1` and the free tier keeps no pooled connection, so each request
+   opens a new one. Render cannot change a service's region after creation.
+6. Migrations run inside `buildCommand` — Render's separate *pre-deploy* command
    is a paid feature, and the build environment can reach TiDB because it is an
    external host.
-6. If the 0003 integrity migrations stop with a list of duplicate ids, that is
+7. If the 0003 integrity migrations stop with a list of duplicate ids, that is
    the guard doing its job: it will not delete rows to make an index fit. Review
    the duplicates, then set `CODEHER_ALLOW_DEDUPE=1` for one deploy.
-7. Before that first deploy, run
+8. Before that first deploy, run
    `python scripts\check_deployment_env.py --dotenv .env` (or the same
    command with no flag inside Render's shell) to see which variables are
    missing, still placeholders, or quietly using a development default. It

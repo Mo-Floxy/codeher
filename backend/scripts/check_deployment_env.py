@@ -63,6 +63,12 @@ def is_true(value):
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def is_false(value):
+    # Only an explicit no counts: an empty value means the setting is absent, and settings.py
+    # defaults MYSQL_SSL_CHECK_HOSTNAME to on.
+    return value.strip().lower() in {"0", "false", "no", "off"}
+
+
 def has_local_host(value):
     return any(token in value for token in LOCAL_HOSTS)
 
@@ -100,7 +106,7 @@ def check_database():
         return
     for name, reason in (
         ("MYSQL_HOST", "the cluster address, ending in .tidbcloud.com"),
-        ("MYSQL_USER", "the database user, usually <user>%<cluster-id> on TiDB"),
+        ("MYSQL_USER", "on TiDB Cloud Starter this is the cluster's own identifier plus the user, shaped like AbCdEf123.root"),
         ("MYSQL_PASSWORD", "the database password"),
         ("MYSQL_DATABASE", "the schema name"),
     ):
@@ -114,10 +120,13 @@ def check_database():
             "TiDB Cloud Serverless listens on 4000; a wrong port hangs until it times out "
             "and looks exactly like a blocked network allowlist",
         )
-    if is_placeholder(read("MYSQL_SSL_CA")) and not is_true(read("MYSQL_SSL")):
-        warn(
-            "MYSQL_SSL_CA",
-            "unset, so credentials and rows travel unencrypted; TiDB Cloud publishes a CA bundle for the Starter tier",
+    if has_template_host(host):
+        fatal("MYSQL_HOST", "still the placeholder hostname from the template")
+    if not has_local_host(host) and is_false(read("MYSQL_SSL_CHECK_HOSTNAME")):
+        fatal(
+            "MYSQL_SSL_CHECK_HOSTNAME",
+            "turned off, and PyMySQL answers that by encrypting without verifying the "
+            "certificate - anyone on the path can terminate the TLS and read the credentials",
         )
 
 
