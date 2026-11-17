@@ -6,13 +6,17 @@ no reachable explanation for the person who has to act on it — including a bot
 reading the API. So the suite output is piped through here on failure:
 
     python -m pytest 2>&1 | tee /tmp/pytest.log
-    tail -n 140 /tmp/pytest.log | python scripts/ci_annotate.py
+    tail -n 60 /tmp/pytest.log | python scripts/ci_annotate.py
 
-The traceback tail is the part that identifies the failure, and 140 lines stays
-well under the annotation size limit.
+The traceback tail is the part that identifies the failure. An annotation also
+has a hard size limit and an over-long one is discarded rather than truncated,
+so the budget below keeps the end of the capture and drops its beginning.
 """
 
 import sys
+
+# Character budget for the escaped message, leaving room for the command prefix.
+MAX_CHARS = 3200
 
 
 def escape(text: str) -> str:
@@ -28,7 +32,10 @@ def main() -> int:
     body = sys.stdin.read().strip()
     if not body:
         body = "no output captured"
-    print(f"::error::CI suite failed%0A%0A{escape(body)}")
+    message = escape(body)
+    if len(message) > MAX_CHARS:
+        message = "… truncated …%0A" + message[-MAX_CHARS:]
+    print(f"::error::CI step failed%0A%0A{message}")
     return 0
 
 

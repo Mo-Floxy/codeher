@@ -54,10 +54,14 @@ jobs:
       - name: Suite
         run: |
           set -o pipefail
-          python -m pytest 2>&1 | tee /tmp/pytest.log
-          status=$?
+          # Actions runs this as bash -e, so the failing pipeline has to be caught
+          # here rather than on the next line: without the || the step dies before
+          # the annotation is ever emitted, which is exactly how the first MySQL run
+          # went red with nothing readable to say about it.
+          status=0
+          python -m pytest 2>&1 | tee /tmp/pytest.log || status=$?
           if [ "$status" -ne 0 ]; then
-            tail -n 140 /tmp/pytest.log | python scripts/ci_annotate.py
+            tail -n 60 /tmp/pytest.log | python scripts/ci_annotate.py
             exit "$status"
           fi
 
@@ -102,21 +106,21 @@ jobs:
       - name: No unapplied model changes on the MySQL branch
         run: |
           set -o pipefail
+          status=0
           python manage.py makemigrations --check --dry-run \
-            --settings=config.mysql_test_settings 2>&1 | tee /tmp/migrations.log
-          status=$?
+            --settings=config.mysql_test_settings 2>&1 | tee /tmp/migrations.log || status=$?
           if [ "$status" -ne 0 ]; then
-            tail -n 140 /tmp/migrations.log | python scripts/ci_annotate.py
+            tail -n 60 /tmp/migrations.log | python scripts/ci_annotate.py
             exit "$status"
           fi
       - name: Suite against a real MySQL-family server
         run: |
           set -o pipefail
+          status=0
           python -m pytest -o DJANGO_SETTINGS_MODULE=config.mysql_test_settings \
-            --tb=short -q 2>&1 | tee /tmp/pytest.log
-          status=$?
+            --tb=short -q 2>&1 | tee /tmp/pytest.log || status=$?
           if [ "$status" -ne 0 ]; then
-            tail -n 140 /tmp/pytest.log | python scripts/ci_annotate.py
+            tail -n 60 /tmp/pytest.log | python scripts/ci_annotate.py
             exit "$status"
           fi
 
