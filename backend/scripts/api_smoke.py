@@ -10,6 +10,7 @@ It only reads and writes demo data for the seeded sample learner.
 """
 
 import argparse
+import base64
 import json
 import sys
 import uuid
@@ -17,6 +18,12 @@ import uuid
 import requests
 
 results = []
+
+# A real 1x1 PNG, which the upload checks hand over under a deliberately wrong
+# `Content-Type`: the point is that the bytes decide what gets stored.
+REAL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGO4XTAZAAQIAd++BIedAAAAAElFTkSuQmCC"
+)
 
 
 def check(label, ok, detail=""):
@@ -213,8 +220,28 @@ def main():
     check("admin can create content", code == 201, created)
     if created.get("id"):
         api.delete(f"/learning/courses/{created['id']}/", token=admin_token)
-    code, _ = api.post("/learning/courses/", token=None, json={"title": "nope"})
+    code, _ = api.post("/learning/courses/", token="", json={"title": "nope"})
     check("anonymous writes are refused", code in (401, 403), code)
+
+    print("\nuploads")
+    # Two calls per run: the `uploads` scope allows 30 an hour per account, and a
+    # check that silently started failing on the eleventh run of an hour would tell
+    # us nothing about the server.
+    code, shot = api.post(
+        "/uploads/", files={"file": ("shot.png", REAL_PNG, "text/html")}, data={"folder": "avatars"}
+    )
+    check("POST /uploads/ accepts a real image whatever its declared type", code == 201 and shot.get("url"), (code, shot))
+    check(
+        "the stored name follows the bytes, not the declaration",
+        code == 201 and (shot.get("path") or "").endswith(".png"),
+        shot.get("path"),
+    )
+    code, refused = api.post("/uploads/", files={"file": ("evil.png", b"<html><script>alert(1)</script></html>", "image/png")})
+    check("an HTML body claiming to be a PNG is refused", code in (415, 429), (code, refused))
+    # `token=""` rather than `token=None`: the helper treats None as "keep the
+    # learner's bearer", which would make this check pass for the wrong reason.
+    code, _ = api.post("/uploads/", token="", files={"file": ("x.png", REAL_PNG, "image/png")})
+    check("anonymous uploads are refused", code in (401, 403), code)
 
     print("\nrunner honesty")
     code, blocked = api.post(f"/challenges/{detail['id']}/run/", json={"language": "ruby", "code": "def x; end"})
