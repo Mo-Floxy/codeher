@@ -172,15 +172,15 @@ class ForgotPasswordView(APIView):
             )
         except Exception:
             logger.exception("Password reset email could not be sent")
-            return Response(
-                {
-                    "detail": "The mail server is unavailable — set EMAIL_HOST in backend/.env to send reset links.",
-                    "mail_configured": False,
-                },
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+            # The neutral answer again, not a 502. With no SMTP configured — which is
+            # how this project deploys until EMAIL_HOST is filled in — a failure status
+            # for a known address and a success status for an unknown one turns the
+            # form into an account-existence oracle, which is the opposite of what this
+            # view promises. The exception is logged, so the outage is still visible
+            # where an operator can see it.
+            return Response({"detail": detail})
 
-        payload = {"detail": detail, "mail_configured": True}
+        payload = {"detail": detail}
         if settings.DEBUG and "console" in settings.EMAIL_BACKEND:
             payload.update(
                 {

@@ -184,6 +184,26 @@ class TestPasswordReset:
         assert len(mail.outbox) == 1
         assert mail.outbox[0].to == ["ada@example.com"]
 
+    def test_a_broken_mail_server_does_not_reveal_that_the_address_exists(self, monkeypatch):
+        """The guarantee the view advertises has to survive an SMTP outage.
+
+        Deploys run with DEBUG=False and no EMAIL_HOST until one is chosen, so the
+        mail backend points at localhost:587 and every send fails. If that returned
+        an error status, a caller could tell "no such account" from "account exists"
+        with two requests, so both answers must be identical.
+        """
+
+        def boom(*args, **kwargs):
+            raise OSError("smtp unreachable")
+
+        make_user("ada")
+        monkeypatch.setattr("apps.users.views.send_mail", boom)
+        unknown = api().post("/api/auth/password/forgot/", {"email": "nobody@example.com"}, format="json")
+        known = api().post("/api/auth/password/forgot/", {"email": "ada@example.com"}, format="json")
+        assert unknown.status_code == known.status_code == 200
+        assert unknown.json() == known.json()
+        assert len(mail.outbox) == 0
+
     def test_tampered_token_is_rejected(self):
         user = make_user("ada")
         token = str(RefreshToken.for_user(user))  # a real JWT, but not a password-reset token
