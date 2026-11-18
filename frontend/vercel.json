@@ -13,6 +13,10 @@
   ],
   "rewrites": [
     {
+      "source": "/probe-rewrite/:path*",
+      "destination": "/"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://codeher-api.onrender.com/api/:path*"
     },
