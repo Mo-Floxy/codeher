@@ -499,6 +499,12 @@ media rows outlive their files. Object storage is the real fix.
    Render host and rewrites every other path to `/`, which keeps the browser
    same-origin so no CORS configuration is needed and the SPA deep links (`/dashboard`,
    `/community/…`) render instead of 404ing.
+   Every `source` here is written `:path(.*)`, not `:path*`. The `*` form cannot match
+   a path whose last segment is empty, so `/community/` and `/api/health/` — the shape
+   Django's `APPEND_SLASH` gives every endpoint, and therefore the shape the frontend
+   actually requests — fell through to Vercel's own 404 while `/community` worked. The
+   same blind spot left `/community/` with none of the three security headers until the
+   `headers` sources were widened the same way.
    The fallback destination has to be `/`, not `/index.html`. `cleanUrls`
    canonicalizes `/index.html` out of existence, so a rewrite that ends there matches
    no route and the edge answers its own `NOT_FOUND` (`Server: Vercel`,
