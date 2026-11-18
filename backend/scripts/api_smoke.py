@@ -192,6 +192,11 @@ def main():
         check("like toggle returns a count", code == 200 and "likes_count" in liked, liked)
         code, unliked = api.post(f"/community/posts/{post['id']}/like/")
         check("liking again removes it", unliked.get("likes_count", 99) < liked.get("likes_count", 0) + 1, (liked, unliked))
+        # Echo test: the editors save whatever a GET returned, so anything the write
+        # serializer cannot read back is a form that fails for the member using it.
+        code, fetched = api.get(f"/community/posts/{post['id']}/")
+        code, echoed = api.patch(f"/community/posts/{post['id']}/", json=fetched)
+        check("a post read back can be saved back unchanged", code == 200, (code, echoed))
         api.delete(f"/community/posts/{post['id']}/")
 
     print("\nmentorship, gamification, notifications")
@@ -236,6 +241,14 @@ def main():
         code == 201 and (shot.get("path") or "").endswith(".png"),
         shot.get("path"),
     )
+    # The flow the profile page actually runs: upload, then save the returned URL.
+    # A plain ImageField rejected that string, which failed every profile save.
+    code, saved = api.patch("/users/me/profile/", json={"avatar": shot.get("url")})
+    check("the uploaded URL can be saved back to the profile", code == 200 and (saved.get("avatar") or "") == shot.get("url"), (code, saved))
+    code, again = api.get("/users/me/profile/")
+    check("and comes back unchanged on reload", code == 200 and again.get("avatar") == shot.get("url"), (code, again))
+    code, echoed_profile = api.patch("/users/me/profile/", json=again)
+    check("a whole profile read back can be saved back", code == 200, (code, echoed_profile))
     code, refused = api.post("/uploads/", files={"file": ("evil.png", b"<html><script>alert(1)</script></html>", "image/png")})
     check("an HTML body claiming to be a PNG is refused", code in (415, 429), (code, refused))
     # `token=""` rather than `token=None`: the helper treats None as "keep the
