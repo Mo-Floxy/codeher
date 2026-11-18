@@ -167,3 +167,8 @@ and GIF are stored under the extension of what they actually are, anything else 
 SVG document posted as `image/png` would otherwise be served back from the API's own origin).
 Over 4 MB is `413`. Authenticated, and rate-limited per account (the `uploads` scope, 30/hour by
 default) because each accepted file costs disk, not CPU. A refusal is `{ file: "…" }`, not `detail`.
+
+`Profile.avatar` and `Project.screenshot` accept either a file inside the same multipart request or
+the URL `/uploads/` returned for one earlier — the pages upload first and save second. A URL is
+trusted only as a pointer back into our own media folders, never as a path that leaves them; `""` or
+`null` clears the image.

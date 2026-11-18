@@ -21,6 +21,7 @@ from rest_framework.views import APIView
 from apps.challenges.models import Challenge, Submission
 from apps.community.models import Comment, Engagement, Post, Project, Report
 from apps.core import admin_serializers as admin_s
+from apps.core.media import MEDIA_FOLDERS
 from apps.core.models import Announcement, Event, Testimonial
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.permissions import IsAdmin
@@ -143,7 +144,7 @@ class UploadView(APIView):
             )
 
         folder = request.data.get("folder", "uploads")
-        if folder not in {"avatars", "project-screenshots", "course-thumbnails", "uploads"}:
+        if folder not in MEDIA_FOLDERS:
             folder = "uploads"
         name = f"{folder}/{uuid.uuid4().hex}.{extension}"
         path = default_storage.save(name, upload)

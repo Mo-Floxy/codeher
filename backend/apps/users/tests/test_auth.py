@@ -262,6 +262,41 @@ class TestProfile:
         assert user.profile.interests == ["react", "css"]
         assert user.profile.skill_level == "intermediate"
 
+    def test_the_avatar_url_the_api_returned_can_be_saved_back(self):
+        """Settings uploads through /api/uploads/ and PATCHes the URL it was given.
+
+        A plain ImageField rejected that string with "the submitted data was not a
+        file", and because the page echoes the current avatar on every save, that
+        failed a bio-only edit too — the whole form was unreachable, not the image.
+        """
+        user = make_user("ada")
+        response = api(user).patch(
+            "/api/users/me/profile/", {"avatar": "/media/avatars/9f2c1b.png", "bio": "React and coffee."}, format="json"
+        )
+        assert response.status_code == 200, response.data
+        user.profile.refresh_from_db()
+        assert user.profile.avatar.name == "avatars/9f2c1b.png"
+        assert response.data["avatar"].endswith("/media/avatars/9f2c1b.png")
+
+    def test_an_empty_avatar_clears_it(self):
+        user = make_user("ada")
+        user.profile.avatar = "avatars/9f2c1b.png"
+        user.profile.save()
+        response = api(user).patch("/api/users/me/profile/", {"avatar": ""}, format="json")
+        assert response.status_code == 200, response.data
+        user.profile.refresh_from_db()
+        assert not user.profile.avatar
+
+    def test_an_avatar_path_outside_our_media_is_refused(self):
+        """The string becomes a path the storage backend opens, so it stays inside."""
+        user = make_user("ada")
+        for bogus in ["/media/../secrets.png", "/static/x.png", "https://elsewhere.example/x.png", "avatars/x.png"]:
+            refused = api(user).patch("/api/users/me/profile/", {"avatar": bogus}, format="json")
+            assert refused.status_code == 400, bogus
+            assert "avatar" in refused.data, bogus
+        user.profile.refresh_from_db()
+        assert not user.profile.avatar
+
     def test_gamification_fields_are_read_only_through_the_profile_api(self):
         user = make_user("ada")
         response = api(user).patch("/api/users/me/profile/", {"total_xp": 99999, "level": 40}, format="json")

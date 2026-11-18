@@ -9,6 +9,7 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
+from apps.core.media import MediaUrlField
 from apps.users.models import Profile, User
 
 
@@ -58,7 +59,9 @@ class UserBriefSerializer(serializers.ModelSerializer):
 
 class ProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
-    avatar = serializers.ImageField(use_url=True, required=False)
+    # The settings page uploads through /api/uploads/ and then saves the URL it was
+    # handed, so a plain ImageField rejected every one of those saves.
+    avatar = MediaUrlField(use_url=True, required=False, allow_null=True)
     avatar_url = serializers.SerializerMethodField()
     followers_count = serializers.SerializerMethodField()
     following_count = serializers.SerializerMethodField()

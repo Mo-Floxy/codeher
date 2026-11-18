@@ -6,6 +6,7 @@ XP or notifications is executed by apps.community.services from the view layer.
 
 from rest_framework import serializers
 
+from apps.core.media import MediaUrlField
 from apps.courses.models import Course
 from apps.community.models import Comment, Post, Project, Report
 
@@ -108,9 +109,9 @@ class ProjectSerializer(serializers.ModelSerializer):
     # Members may draft or publish; "hidden" belongs to moderation only. The field
     # stays a plain CharField so rows an admin hid still serialise without error.
     status = serializers.CharField(required=False)
-    # Writable upload field; DRF renders it as an absolute URL when the request
-    # is in context and None when no file is attached.
-    screenshot = serializers.ImageField(required=False, allow_null=True)
+    # Either a file in this request or the URL /api/uploads/ returned; rendered back
+    # as an absolute URL, and None when no image is attached.
+    screenshot = MediaUrlField(required=False, allow_null=True)
     course = serializers.PrimaryKeyRelatedField(
         queryset=Course.objects.all(), required=False, allow_null=True
     )

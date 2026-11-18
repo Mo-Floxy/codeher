@@ -452,6 +452,48 @@ def test_project_publish_via_create_and_screenshot_upload():
     assert PointEvent.objects.filter(user=author, reason="project_publish").count() == 1
 
 
+def test_project_save_accepts_the_screenshot_url_the_api_returned():
+    """The editor uploads through `/uploads/` and sends that URL back as JSON.
+
+    It also re-sends the value it was given on every later save, and `""` when there
+    is no screenshot, so a serializer that understood only in-request files rejected
+    ordinary title edits — for projects with a screenshot and without one alike.
+    """
+    author = make_user("iris")
+    first = api(author).post(
+        "/projects/",
+        {
+            "title": "Trail map",
+            "description": "Weekend routes, kept as data.",
+            "screenshot": "/media/project-screenshots/a1b2c3.png",
+        },
+        format="json",
+    )
+    assert first.status_code == 201, first.data
+    screenshot_url = first.json()["screenshot"]
+    assert screenshot_url.endswith("/media/project-screenshots/a1b2c3.png")
+
+    again = api(author).patch(
+        f"/projects/{first.json()['id']}/", {"title": "Trail map v2", "screenshot": screenshot_url}, format="json"
+    )
+    assert again.status_code == 200, again.data
+    assert again.json()["screenshot"] == screenshot_url
+
+    blank = api(author).post(
+        "/projects/", {"title": "No picture", "description": "Text only.", "screenshot": ""}, format="json"
+    )
+    assert blank.status_code == 201, blank.data
+    assert blank.json()["screenshot"] is None
+
+    foreign = api(author).post(
+        "/projects/",
+        {"title": "Stolen path", "description": "Points elsewhere.", "screenshot": "/media/../private/keys.png"},
+        format="json",
+    )
+    assert foreign.status_code == 400
+    assert "screenshot" in foreign.json()
+
+
 def test_project_view_endpoint_counts_traffic():
     author = make_user("june")
     project = make_project(author)
