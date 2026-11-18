@@ -20,9 +20,10 @@ You should see:
 
 ```
 [runner] listening on http://127.0.0.1:8090/run
-[runner] javascript: node:vm (timeout + no require/process/fetch)
+[runner] javascript: child process + node:vm realm, stripped env, permission model on
 [runner] python:     3.14.7 via C:\...\backend\.venv\Scripts\python.exe (subprocess -I -S, AST allowlist)
-[runner] NOT production-hardened. See README.md before exposing this beyond localhost.
+[runner] This service executes untrusted code. The shared secret is the only front door:
+[runner] keep RUNNER_SHARED_SECRET long and random, and rotate it everywhere if it leaks.
 ```
 
 `RUNNER_SHARED_SECRET` must match the value in `backend/.env`, and
@@ -46,7 +47,8 @@ defaults to `http://127.0.0.1:8090`.
 
 ## Endpoints
 
-`GET /health` — service banner plus the Python probe result.
+`GET /health` — service banner, which sandbox layers are live (including whether
+this runtime supports `--permission`), and the Python probe result.
 
 `POST /run` with `X-Runner-Secret` and:
 
@@ -73,12 +75,26 @@ defaults to `http://127.0.0.1:8090`.
 
 ## How each language is confined
 
-**JavaScript** runs as a `node:vm` `Script` inside a context object that only
-contains safe globals (`Math`, `JSON`, `Map`, `Set`, `Date`, `RegExp`, the
-primitive constructors). There is no `require`, `process`, `fetch` or
-`console` output, so a submission cannot reach the filesystem, the network or
-the runner's environment. V8's own script timeout stops infinite loops without
-killing the service.
+**JavaScript** runs in a throwaway `node` child process per submission, and
+inside that child a fresh `node:vm` context. Both layers are load-bearing:
+
+- The context is created *empty* — a new realm already has `Math`, `JSON`, `Map`,
+  `Date`, the primitive constructors and everything else standard — and nothing
+  from the runner's realm is assigned into it. That distinction is the whole
+  point: a value copied in from outside carries its host realm with it, so
+  injecting `Object` or `Array`, or a `console` stub, or a test's arguments
+  array, handed the submission a host `Function` constructor, which is one call
+  away from `process`. `npm run smoke` asserts each of those paths.
+- The child gets an environment containing no credentials (the database password,
+  the JWT signing key and the shared secret stay in the parent), reads its job
+  from stdin and writes its report to stdout, so it never needs filesystem write
+  access. Where the runtime supports it (Node 20+) it also starts with
+  `--permission --allow-fs-read=*`, which makes `child_process`, workers and
+  every write a runtime-level `ERR_ACCESS_DENIED` rather than a coding mistake.
+  `GET /health` reports whether that layer is live.
+
+V8's script timeout still stops infinite loops; the parent's kill timer is the
+backstop if the child itself stops answering.
 
 **Python** is validated before it is compiled: every AST node must be on an
 allowlist, and `import`, `with`, `global`, `nonlocal`, `await`, async functions,
@@ -94,24 +110,35 @@ afterwards, and a hard kill when the time budget is exceeded.
 This is a **development and demonstration sandbox, not a production security
 boundary**. Be honest about it in any write-up:
 
-- `node:vm` is explicitly documented by Node as *not* a security mechanism. It
-  stops accidents and casual escapes; a determined attacker with the ability to
-  submit arbitrary JavaScript can still find ways out.
-- Memory is capped for the whole Node process (`--max-old-space-size`), not per
-  request. A submission that allocates aggressively can disturb other
-  submissions.
+- `node:vm` is documented by Node as *not* a security mechanism, so it is not
+  treated as one. The realm is what stops an honest mistake from being an
+  incident; the process boundary, the stripped environment and the permission
+  model are what an actual escape lands in. A submission that breaks out of both
+  can still read files the runner can read and can make network requests — Node's
+  permission model does not cover outbound connections yet.
+- Each JavaScript submission now pays for a Node cold start (tens of milliseconds
+  on Linux, more on Render's 0.1 CPU instance). That is the price of the process
+  boundary; the Python path has always cost more.
+- Memory is capped per child process (`--max-old-space-size`, from
+  `memory_limit_mb`), so one allocation-hungry submission can no longer disturb
+  another's runner.
 - On Windows there is no `rlimit`, so Python CPU and memory limits are enforced
   by the wall-clock kill and the process boundary rather than by the kernel.
 - No per-user rate limiting here; that lives in Django's throttle layer.
-- The runner trusts that Django is the only client on localhost. Anything that
-  can reach port 8090 and guess the shared secret can execute code as the user
-  running the runner.
+- The runner trusts `RUNNER_SHARED_SECRET` and nothing else. Locally that means
+  "Django is the only client on localhost"; as deployed, Render gives this service
+  a public `onrender.com` URL, so the secret is the entire front door. Generate a
+  long random value (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`),
+  put the same value in both services, and treat a leaked one as a code-execution
+  compromise.
 
-The upgrade path for real deployments is a stronger isolation layer — a Docker
+The upgrade path for a hardened setup is a stronger isolation layer — a Docker
 or gVisor/Firecracker sandbox per execution, with network egress disabled, a
 read-only filesystem, dropped capabilities and a cgroup memory ceiling. The
 Django side does not change: it is already a single HTTP call with a shared
 secret, so swapping the runner is a swap of this service only.
 
-Until that swap happens, run the runner on localhost only, as a low-privilege
-account, on a machine with nothing sensitive on it.
+Until that swap happens, keep the runner as its own service — which it is on
+Render. Learner code runs as that service's user, so the database password and
+the JWT signing key must never be in *its* environment, only in the API's. That
+separation, not the sandbox, is what limits the blast radius of a full escape.

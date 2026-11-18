@@ -20,7 +20,7 @@ DUNDER_RE = re.compile(r"__\w+__")
 ALLOWED_NODE_NAMES = [
     "Module", "FunctionDef", "ClassDef", "Return",
     "Assign", "AugAssign", "AnnAssign", "Delete",
-    "For", "While", "If", "Expr", "Pass", "Break", "Continue", "Raise", "Try", "TryStar",
+    "For", "While", "If", "Expr", "Pass", "Break", "Continue", "Raise", "Try", "TryStar", "ExceptHandler",
     "BoolOp", "BinOp", "UnaryOp", "Lambda", "IfExp", "Compare", "Call",
     "FormattedValue", "JoinedStr", "Constant", "Attribute", "Subscript", "Starred", "Slice",
     "Name", "List", "Tuple", "Set", "Dict",

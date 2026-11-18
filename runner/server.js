@@ -17,7 +17,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 
-const { runJavaScript } = require("./lib/javascript");
+const { runJavaScriptIsolated, supportsPermissionModel } = require("./lib/javascript");
 const { runPython, minimalEnv } = require("./lib/python");
 
 loadDotEnv(path.join(__dirname, ".env"));
@@ -51,6 +51,8 @@ const server = http.createServer(async (request, response) => {
       service: "codeher-runner",
       languages: [...ALLOWED_LANGUAGES],
       max_code_bytes: MAX_CODE_BYTES,
+      // Readable from outside so a deploy can prove which isolation layers are live.
+      sandbox: { javascript: "child-process+vm", permission_model: supportsPermissionModel },
       python: pythonHealth,
     });
   }
@@ -85,7 +87,7 @@ const server = http.createServer(async (request, response) => {
   try {
     const report =
       payload.language === "javascript"
-        ? runJavaScript(job)
+        ? await runJavaScriptIsolated(job)
         : await runPython(job, PYTHON_BIN);
     report.runtime_ms = report.runtime_ms || Date.now() - started;
     return json(response, 200, report);
@@ -97,14 +99,15 @@ const server = http.createServer(async (request, response) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`[runner] listening on http://${HOST}:${PORT}/run`);
-  console.log(`[runner] javascript: node:vm (timeout + no require/process/fetch)`);
+  console.log(`[runner] javascript: child process + node:vm realm, stripped env, permission model ${supportsPermissionModel ? "on" : "UNAVAILABLE (Node < 20)"}`);
   probePython().then((status) => {
     Object.assign(pythonHealth, status);
     const line = status.available
       ? `python:     ${status.version} via ${PYTHON_BIN} (subprocess -I -S, AST allowlist)`
       : `python:     UNAVAILABLE — ${status.error}`;
     console.log(`[runner] ${line}`);
-    console.log(`[runner] NOT production-hardened. See README.md before exposing this beyond localhost.`);
+    console.log(`[runner] This service executes untrusted code. The shared secret is the only front door:`);
+    console.log(`[runner] keep RUNNER_SHARED_SECRET long and random, and rotate it everywhere if it leaks.`);
   });
 });
 

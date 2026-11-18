@@ -127,6 +127,54 @@ async function main() {
   });
   check("javascript cannot require() the filesystem", /not defined/.test(escaped.body.results?.[0]?.error || ""), escaped.body);
 
+  // Anything the runner *assigns* into the sandbox arrives with its host realm
+  // attached. Injecting Object/JSON/Array, a console stub, or the test arguments
+  // therefore gave a submission a host `Function` constructor — one call from
+  // `process`, whose environment holds the database password and JWT signing key.
+  // Every one of these must now answer `undefined` or `contained`.
+  const hostBuiltins = await post({
+    language: "javascript",
+    function_name: "solution",
+    code: 'function solution(){ return String(Object.constructor("return typeof process")()) + "/" + String(Array.constructor("return typeof require")()); }',
+    tests: [{ name: "injected built-ins", args: [], expected: "undefined/undefined" }],
+  });
+  check("javascript built-ins belong to the sandbox realm", hostBuiltins.body.results?.[0]?.passed === true, hostBuiltins.body);
+
+  const hostArguments = await post({
+    language: "javascript",
+    function_name: "solution",
+    code: 'function solution(a){ try { return String(a.constructor.constructor("return typeof process")()); } catch (e) { return "contained"; } }',
+    tests: [{ name: "argument realm", args: [1], expected: "undefined" }],
+  });
+  check("test arguments belong to the sandbox realm", hostArguments.body.results?.[0]?.passed === true, hostArguments.body);
+
+  const hostConsole = await post({
+    language: "javascript",
+    function_name: "solution",
+    code: 'function solution(){ try { console.log("x"); return String(console.constructor.constructor("return typeof process")()); } catch (e) { return "contained"; } }',
+    tests: [{ name: "console realm", args: [], expected: "undefined" }],
+  });
+  check("the console stub belongs to the sandbox realm", hostConsole.body.results?.[0]?.passed === true, hostConsole.body);
+
+  const childProcess = await post({
+    language: "javascript",
+    function_name: "solution",
+    code: 'function solution(){ try { Object.constructor("return process")().mainModule.require("child_process").execSync("echo pwned"); return "ESCAPED"; } catch (e) { return "contained"; } }',
+    tests: [{ name: "no shell", args: [], expected: "contained" }],
+  });
+  check("javascript cannot spawn a process", childProcess.body.results?.[0]?.passed === true, childProcess.body);
+
+  const leakedEnv = await post({
+    language: "javascript",
+    function_name: "solution",
+    code:
+      'function solution(){ try { const env = Object.constructor("return process")().env; ' +
+      'return ["RUNNER_SHARED_SECRET","MYSQL_PASSWORD","DJANGO_SECRET_KEY","JWT_SIGNING_KEY"].some((k) => k in env) ? "LEAKED" : "no-credentials"; ' +
+      "} catch (e) { return \"no-credentials\"; } }",
+    tests: [{ name: "no credentials in env", args: [], expected: "no-credentials" }],
+  });
+  check("javascript cannot read runner credentials", leakedEnv.body.results?.[0]?.passed === true, leakedEnv.body);
+
   const loop = await post({
     language: "javascript",
     function_name: "solution",
@@ -171,6 +219,26 @@ async function main() {
     tests: [{ name: "dunder", args: [1], expected: "" }],
   });
   check("python blocks dunder attribute access", /[Pp]rivate|dunder/.test(pyDunder.body.error || ""), pyDunder.body);
+
+  // `Try` was allowlisted but `ExceptHandler` — the node type of each `except`
+  // clause — was not, so every submission that caught an exception was rejected as
+  // unsafe. A learner writing ordinary defensive Python was told their code was a
+  // threat.
+  const pyTry = await post({
+    language: "python",
+    function_name: "solution",
+    code:
+      "def solution(n):\n" +
+      "    try:\n" +
+      "        return 10 // n\n" +
+      "    except ZeroDivisionError:\n" +
+      "        return -1\n",
+    tests: [
+      { name: "divides", args: [2], expected: 5 },
+      { name: "caught", args: [0], expected: -1 },
+    ],
+  });
+  check("python allows try/except", pyTry.body.ok === true, pyTry.body);
 
   const pyLoop = await post({
     language: "python",
