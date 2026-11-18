@@ -6,15 +6,15 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/api/:path*",
+      "source": "/api/:path(.*)",
       "destination": "https://codeher-api.onrender.com/api/:path*"
     },
     {
-      "source": "/media/:path*",
+      "source": "/media/:path(.*)",
       "destination": "https://codeher-api.onrender.com/media/:path*"
     },
     {
-      "source": "/:path*",
+      "source": "/:path(.*)",
       "destination": "/"
     }
   ],
