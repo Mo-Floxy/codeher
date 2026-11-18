@@ -39,6 +39,7 @@ from apps.challenges.serializers import (
 from apps.core.exceptions import ValidationFailed
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.permissions import IsAuthenticatedOrReadOnly
+from apps.core.throttling import SandboxThrottle
 from apps.users.models import Profile
 
 LEADERBOARD_LIMIT = 50
@@ -75,6 +76,17 @@ class ChallengeViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewset
         if self.action == "retrieve":
             return ChallengeDetailSerializer
         return ChallengeCardSerializer
+
+    def get_throttles(self):
+        """Only the two endpoints that start a sandbox process are rate-limited.
+
+        Putting the scope on the whole viewset instead would cap catalogue browsing
+        at the same rate, which a user paging through the feed can reach without
+        executing a single line of code.
+        """
+        if self.action in {"run", "submit"}:
+            return [SandboxThrottle()]
+        return super().get_throttles()
 
     def get_object(self):
         """Resolve the lookup as a primary key when numeric, otherwise as a slug."""

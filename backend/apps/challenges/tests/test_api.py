@@ -7,6 +7,7 @@ never that a local sandbox happens to be running.
 import datetime
 
 import pytest
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APIClient
 from apps.achievements.models import PointEvent
@@ -14,6 +15,7 @@ from apps.achievements.services import award_xp
 from apps.challenges import services
 from apps.challenges.models import Challenge, ChallengeTestCase, Submission
 from apps.core.exceptions import RunnerUnavailable
+from apps.core.throttling import SandboxThrottle
 from apps.users.models import Profile, User
 
 HIDDEN_NAME = "hidden: rounding guard"
@@ -280,6 +282,34 @@ def test_unreachable_runner_is_503_and_never_a_pass(auth_client, challenge, monk
     assert submit.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert Submission.objects.count() == 0
     assert not Submission.objects.filter(passed=True).exists()
+
+
+def test_sandbox_calls_are_rate_limited_per_member(auth_client, challenge, monkeypatch):
+    """`run/` costs a real process, so the settings rate must actually bite.
+
+    The suite runs with every scope lifted, hence the explicit burst here: without
+    the override this test would pass while the limit stayed unwired.
+    """
+    monkeypatch.setattr(services, "runner_run", passing_runner())
+    monkeypatch.setattr(SandboxThrottle, "THROTTLE_RATES", {"sandbox": "2/min"})
+    # locmem outlives the per-test transaction rollback, and reused member pks
+    # would inherit another test's throttle history.
+    cache.clear()
+
+    url = "/api/challenges/{}/run/".format(challenge.pk)
+    body = {"language": "javascript", "code": "1"}
+    assert [auth_client.post(url, body, format="json").status_code for _ in range(2)] == [200, 200]
+
+    blocked = auth_client.post(url, body, format="json")
+    assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert "throttl" in blocked.data["detail"].lower()
+    # The graded path shares the scope, so it is not a way around the limit.
+    assert (
+        auth_client.post("/api/challenges/{}/submit/".format(challenge.pk), body, format="json").status_code
+        == status.HTTP_429_TOO_MANY_REQUESTS
+    )
+    # Browsing the catalogue is not the expensive call and must stay open.
+    assert auth_client.get("/api/challenges/{}/".format(challenge.pk)).status_code == 200
 
 
 def test_submit_needs_grading_data(auth_client, monkeypatch, learner):

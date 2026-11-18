@@ -84,8 +84,11 @@ code }, position, estimated_minutes, xp`. Body blocks are `{ type: heading|parag
 runtime_ms, error, created_at`.
 
 Execution never happens in Django: `run/` and `submit/` proxy to the isolated runner service
-(`runner/`, port 8090) over HTTP with a shared secret, and the runner enforces CPU/memory/timeout caps
-and an AST/network allowlist for Python.
+(`runner/`, port 8090) over HTTP with a shared secret, and the runner enforces CPU/memory/timeout caps,
+an AST/network allowlist for Python, and an empty-realm child process per JavaScript submission.
+Both endpoints share the `sandbox` rate-limit scope (20/minute per account, `THROTTLE_SANDBOX`), since
+each call starts a real process; exceeding it is `429` with a `detail` message. Browsing the
+catalogue is not limited by that scope.
 
 ## community
 | GET | `/community/posts/` | `?type=question\|discussion\|showcase&tag&search&ordering&page` | feed |
@@ -158,3 +161,9 @@ Kinds: `comment, reply, mentorship_update, session_reminder, course_announcement
 ## media
 Uploads go to `/api/uploads/` (`multipart/form-data`, field `file`) and return `{ url }`; avatars and
 project screenshots use it. Served from `MEDIA_ROOT` in development only.
+
+The format is read from the file's own bytes, never from the declared `Content-Type`: PNG, JPEG, WebP
+and GIF are stored under the extension of what they actually are, anything else is `415` (an HTML or
+SVG document posted as `image/png` would otherwise be served back from the API's own origin).
+Over 4 MB is `413`. Authenticated, and rate-limited per account (the `uploads` scope, 30/hour by
+default) because each accepted file costs disk, not CPU. A refusal is `{ file: "…" }`, not `detail`.
