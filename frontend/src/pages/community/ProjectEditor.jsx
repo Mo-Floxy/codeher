@@ -104,7 +104,7 @@ export default function ProjectEditor() {
       }
       setFields((current) => ({ ...current, screenshot: url }));
     } catch (err) {
-      setUploadError(errorText(err));
+      setUploadError(err?.messageFor?.("file") || errorText(err));
     } finally {
       setUploading(false);
     }

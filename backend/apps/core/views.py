@@ -10,10 +10,12 @@ from django.core.files.storage import default_storage
 from django.db.models import Avg, Count, Q
 from django.db.models.functions import TruncDate
 from django.utils import timezone
+from PIL import Image, UnidentifiedImageError
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.challenges.models import Challenge, Submission
@@ -30,8 +32,11 @@ from apps.users.models import Profile
 User = get_user_model()
 logger = logging.getLogger("apps.core")
 
-IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}
+IMAGE_FORMATS = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp", "GIF": "gif"}
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+# A 4 MB PNG can decode to several gigabytes of pixels, which is a cheap way to stop a
+# free-tier instance. Nothing here resizes or re-encodes, so only the extent matters.
+MAX_IMAGE_PIXELS = 40_000_000
 
 
 # ------------------------------------------------------------------- public site
@@ -92,11 +97,34 @@ class EventListView(APIView):
 
 
 # ----------------------------------------------------------------------- uploads
+def image_extension(handle):
+    """Return the extension of the bytes actually in `handle`, or None.
+
+    `Content-Type` is written by the client, so it is not evidence: an HTML or SVG
+    document arriving as `image/png` used to be stored and served back from the API's
+    own origin. Here the format comes from the file's own header, and only the header
+    is read — the pixels are never decoded.
+    """
+    handle.seek(0)
+    try:
+        with Image.open(handle) as probe:
+            extension = IMAGE_FORMATS.get((probe.format or "").upper())
+            pixels = int(probe.width or 0) * int(probe.height or 0)
+            probe.verify()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        return None
+    finally:
+        handle.seek(0)
+    return extension if extension and pixels <= MAX_IMAGE_PIXELS else None
+
+
 class UploadView(APIView):
     """Avatar and screenshot uploads. Restricted to images, size-capped, random names."""
 
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "uploads"
 
     def post(self, request):
         upload = request.FILES.get("file")
@@ -107,10 +135,10 @@ class UploadView(APIView):
                 {"file": f"Images must be {MAX_UPLOAD_BYTES // (1024 * 1024)} MB or smaller."},
                 status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             )
-        extension = IMAGE_TYPES.get(getattr(upload, "content_type", ""))
+        extension = image_extension(upload)
         if extension is None:
             return Response(
-                {"file": "Only PNG, JPEG, WebP or GIF images are accepted."},
+                {"file": "Only PNG, JPEG, WebP or GIF images are accepted, and the file must really be one."},
                 status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             )
 

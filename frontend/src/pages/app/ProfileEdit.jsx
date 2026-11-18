@@ -110,7 +110,9 @@ export default function ProfileEdit() {
         toast.error("Upload did not return a URL.");
       }
     } catch (err) {
-      toast.error(err?.detail || "Could not upload that image.");
+      // Upload refusals are reported under `file`; `detail` is empty, so the generic
+      // message would hide why the image was rejected.
+      toast.error(err?.messageFor?.("file") || "Could not upload that image.");
     } finally {
       setUploading(false);
       event.target.value = "";

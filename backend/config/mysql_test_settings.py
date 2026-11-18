@@ -55,7 +55,14 @@ EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 MEDIA_ROOT = str(BASE_DIR / "media-test")  # noqa: F405
 
-REST_FRAMEWORK = {**REST_FRAMEWORK, "DEFAULT_THROTTLE_RATES": {"auth": "1000/min", "sandbox": "1000/min"}}  # noqa: F405
+# Same as config/test_settings.py: lift every scope the API defines rather than
+# listing them, so a new throttle cannot break the suite with ImproperlyConfigured.
+REST_FRAMEWORK = {  # noqa: F405
+    **REST_FRAMEWORK,
+    "DEFAULT_THROTTLE_RATES": {
+        scope: "1000/min" for scope in REST_FRAMEWORK.get("DEFAULT_THROTTLE_RATES", {})  # noqa: F405
+    },
+}
 
 # The runner is never reachable during tests; the challenge tests mock the client.
 RUNNER_BASE_URL = "http://127.0.0.1:1"

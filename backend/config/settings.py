@@ -220,6 +220,9 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "auth": env("THROTTLE_AUTH", "30/min"),
         "sandbox": env("THROTTLE_SANDBOX", "20/min"),
+        # Uploads are the one endpoint where a request costs disk instead of CPU, and
+        # a logged-in account is cheap to make: cap the bytes one user can park.
+        "uploads": env("THROTTLE_UPLOADS", "30/hr"),
     },
 }
 
