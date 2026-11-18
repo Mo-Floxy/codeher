@@ -4,18 +4,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "cleanUrls": true,
-  "redirects": [
-    {
-      "source": "/probe-redirect",
-      "destination": "/dashboard",
-      "permanent": false
-    }
-  ],
   "rewrites": [
-    {
-      "source": "/probe-rewrite/:path*",
-      "destination": "/"
-    },
     {
       "source": "/api/:path*",
       "destination": "https://codeher-api.onrender.com/api/:path*"
@@ -26,7 +15,7 @@
     },
     {
       "source": "/:path*",
-      "destination": "/index.html"
+      "destination": "/"
     }
   ],
   "headers": [
@@ -44,8 +33,7 @@
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "X-CodeHer-Config", "value": "vercel-json-read" }
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
       ]
     }
   ]

@@ -496,18 +496,21 @@ media rows outlive their files. Object storage is the real fix.
    silently creates a *Django* project that cannot build here. Framework
    detection and `vercel.json` then handle `npm run build` and the `dist` output.
 2. Leave `VITE_API_BASE_URL` unset. `vercel.json` proxies `/api` and `/media` to the
-   Render host and rewrites every other path to `index.html`, which keeps the browser
+   Render host and rewrites every other path to `/`, which keeps the browser
    same-origin so no CORS configuration is needed and the SPA deep links (`/dashboard`,
-   `/community/…`) resolve instead of 404ing.
-   Those `source` patterns are path-to-regexp, not regular expressions: a catch-all is
-   written `/:path*`, never `/(.*)`, because a bare `(.*)` group has no parameter name
-   to capture into. The first deploy of this project shipped `/(.*)`, the build stayed
-   green with nothing in the log, and Vercel then ignored the whole `rewrites` array —
-   `/dashboard` answered its own `NOT_FOUND` (`Server: Vercel`, `X-Vercel-Error`) and
-   `/api/health/` never reached Render. Since a broken route is invisible at build
-   time, the check is two requests after any config change: a deep link should return
-   200, and `/api/health/` should come back with Render's `Server: cloudflare` and
-   `x-render-routing` headers rather than Vercel's `X-Vercel-Error`.
+   `/community/…`) render instead of 404ing.
+   The fallback destination has to be `/`, not `/index.html`. `cleanUrls`
+   canonicalizes `/index.html` out of existence, so a rewrite that ends there matches
+   no route and the edge answers its own `NOT_FOUND` (`Server: Vercel`,
+   `X-Vercel-Error`) while the build stays green — the configuration was valid, the
+   route was simply dead. Three deployments of this project went by before that was
+   pinned down, and what settled it was a temporary `redirects` rule in the same file:
+   it returned 307 and a custom header reached the client, proving `vercel.json` was
+   being read and its routing rules applied, so only the rewrite to `index.html` did
+   nothing. After changing routes here, the two requests that count are a deep link
+   (`/dashboard` → 200) and `/api/health/`, which should come back with Render's
+   `Server: cloudflare` and `x-render-routing` headers rather than Vercel's
+   `X-Vercel-Error`.
 3. Name the project **`codeher-frontend`** if the name is free, otherwise accept the
    suffix Vercel gives you and copy the real URL into `render.yaml`: this deployment
    came out as `https://codeher-tasz.vercel.app`, which is what `CORS_ALLOWED_ORIGINS`,
