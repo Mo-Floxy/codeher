@@ -128,7 +128,7 @@ npm run preview       # http://localhost:4173, same proxy, real bundle
 
 The frontend never calls a hard-coded backend host: it requests `/api` and `/media`
 on its own origin, and `vite.config.js` proxies those to Django (`npm run dev` and
-`npm run preview`), while `frontend/public/_redirects` does the same in production. If
+`npm run preview`), while `frontend/vercel.json` does the same in production. If
 Django is not on `127.0.0.1:8000`, set `VITE_PROXY_TARGET`.
 
 ### No MySQL yet? Use SQLite
@@ -459,7 +459,7 @@ a workflow run rather than on a deploy.
    `RUNNER_BASE_URL` must be the runner's own `https://…onrender.com` URL, or
    every challenge submission answers 401.
 4. Replace the placeholder hostnames in `render.yaml` and
-   `frontend/public/_redirects` with the real ones once you have them.
+   `frontend/vercel.json` with the real ones once you have them.
    `DJANGO_ALLOWED_HOSTS` is the forgiving one: Render injects
    `RENDER_EXTERNAL_HOSTNAME` and settings.py trusts it, so a renamed service still
    answers. The CORS and `FRONTEND_ORIGIN` values are not guessed for you — a wrong
@@ -495,18 +495,19 @@ media rows outlive their files. Object storage is the real fix.
    Directory** reads `frontend` before continuing: accepting its first offer
    silently creates a *Django* project that cannot build here. Framework
    detection and `vercel.json` then handle `npm run build` and the `dist` output.
-2. Leave `VITE_API_BASE_URL` unset. `frontend/public/_redirects` proxies `/api` and
-   `/media` to the Render host, which keeps the browser same-origin so no CORS
-   configuration is needed and the SPA deep links (`/dashboard`, `/community/…`)
-   resolve instead of 404ing.
-   Use that file, not `vercel.json` `rewrites`. The first deploy of this project
-   proved why: Vercel honored `buildCommand`, `outputDirectory`, `cleanUrls` and
-   the `headers` block of `vercel.json`, but dropped the entire `rewrites` array
-   without a build warning, so every deep link answered Vercel's own `NOT_FOUND`
-   (`X-Vercel-Error`, `Server: Vercel`) instead of reaching Render. A file inside
-   `public/` is copied into `dist/` by Vite and read per-deployment, which is why
-   it survives that difference. `npm run build` followed by `cat dist/_redirects`
-   is the check that it actually shipped.
+2. Leave `VITE_API_BASE_URL` unset. `vercel.json` proxies `/api` and `/media` to the
+   Render host and rewrites every other path to `index.html`, which keeps the browser
+   same-origin so no CORS configuration is needed and the SPA deep links (`/dashboard`,
+   `/community/…`) resolve instead of 404ing.
+   Those `source` patterns are path-to-regexp, not regular expressions: a catch-all is
+   written `/:path*`, never `/(.*)`, because a bare `(.*)` group has no parameter name
+   to capture into. The first deploy of this project shipped `/(.*)`, the build stayed
+   green with nothing in the log, and Vercel then ignored the whole `rewrites` array —
+   `/dashboard` answered its own `NOT_FOUND` (`Server: Vercel`, `X-Vercel-Error`) and
+   `/api/health/` never reached Render. Since a broken route is invisible at build
+   time, the check is two requests after any config change: a deep link should return
+   200, and `/api/health/` should come back with Render's `Server: cloudflare` and
+   `x-render-routing` headers rather than Vercel's `X-Vercel-Error`.
 3. Name the project **`codeher-frontend`** if the name is free, otherwise accept the
    suffix Vercel gives you and copy the real URL into `render.yaml`: this deployment
    came out as `https://codeher-tasz.vercel.app`, which is what `CORS_ALLOWED_ORIGINS`,
@@ -516,7 +517,7 @@ media rows outlive their files. Object storage is the real fix.
    not exist, so only the URL it assigns after the deploy is evidence. Renaming the
    project later changes the `*.vercel.app` domain, so it must be followed by the same
    three edits.
-4. Update the two `destination` hosts in `frontend/public/_redirects` to your real
+4. Update the two `destination` hosts in `frontend/vercel.json` to your real
    Render host if it differs from `codeher-api.onrender.com`.
 5. Prefer a direct cross-origin call instead? Set `VITE_API_BASE_URL` to
    `https://<service>.onrender.com/api` and add
