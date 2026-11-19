@@ -36,10 +36,16 @@ class PostFilterSet(django_filters.FilterSet):
 
 class ProjectFilterSet(django_filters.FilterSet):
     technology = django_filters.CharFilter(method="filter_technology", label="Technology")
+    # A member profile lists one author's published work. Without this the only
+    # projects a profile page could fetch were the whole gallery.
+    user = django_filters.NumberFilter(field_name="user_id", label="Author")
+    # `_visibility` ORs in the caller's own drafts, which are not something a public
+    # profile should show even when the caller is the author.
+    status = django_filters.ChoiceFilter(choices=Project.STATUS_CHOICES, label="Status")
 
     class Meta:
         model = Project
-        fields = ("technology",)
+        fields = ("technology", "user", "status")
 
     def filter_technology(self, queryset, name, value):
         value = (value or "").strip()

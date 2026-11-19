@@ -494,6 +494,32 @@ def test_project_save_accepts_the_screenshot_url_the_api_returned():
     assert "screenshot" in foreign.json()
 
 
+def test_projects_can_be_filtered_to_one_authors_published_work():
+    """A member profile asks for one author's public shelf, not the whole gallery.
+
+    `_visibility` ORs the caller's own drafts into every listing, so a profile that
+    means "what others can see" has to ask for `status=published` explicitly — the
+    author must not see unpublished work there either.
+    """
+    author = make_user("cora")
+    stranger = make_user("dora")
+    published = make_project(author, title="Public work")
+    draft = make_project(author, title="Still cooking", status="draft")
+    make_project(stranger, title="Someone else's")
+
+    assert result_ids(api().get("/projects/", {"user": author.pk, "status": "published"}).json()) == [published.pk]
+    mine = result_ids(api(author).get("/projects/", {"user": author.pk, "status": "published"}).json())
+    assert mine == [published.pk]
+    assert draft.pk not in mine
+
+    # Dropping the status filter returns to the normal visibility rules.
+    assert set(result_ids(api(author).get("/projects/", {"user": author.pk}).json())) == {published.pk, draft.pk}
+    assert result_ids(api().get("/projects/", {"user": author.pk}).json()) == [published.pk]
+
+    bad = api().get("/projects/", {"status": "archived"})
+    assert bad.status_code == 400
+
+
 def test_project_view_endpoint_counts_traffic():
     author = make_user("june")
     project = make_project(author)

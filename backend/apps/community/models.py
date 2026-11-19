@@ -125,6 +125,8 @@ class Comment(TimestampedModel):
 
 
 class Project(TimestampedModel):
+    STATUS_CHOICES = [("published", "Published"), ("hidden", "Hidden"), ("draft", "Draft")]
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="projects")
     title = models.CharField(max_length=200)
     description = models.TextField(max_length=4000)
@@ -137,7 +139,7 @@ class Project(TimestampedModel):
     )
     status = models.CharField(
         max_length=12,
-        choices=[("published", "Published"), ("hidden", "Hidden"), ("draft", "Draft")],
+        choices=STATUS_CHOICES,
         default="published",
         db_index=True,
     )
