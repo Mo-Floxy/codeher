@@ -78,7 +78,7 @@ class MentorshipRequest(TimestampedModel):
             default=models.Value(None, output_field=models.SmallIntegerField()),
             output_field=models.SmallIntegerField(),
         ),
-        db_persist=True,
+        db_persist=False,
     )
 
     class Meta:

@@ -185,7 +185,7 @@ class Engagement(TimestampedModel):
     target_ref = models.GeneratedField(
         output_field=models.CharField(max_length=32),
         expression=_target_ref("post", "project", "comment"),
-        db_persist=True,
+        db_persist=False,
     )
 
     class Meta:
@@ -239,7 +239,7 @@ class Report(TimestampedModel):
     target_ref = models.GeneratedField(
         output_field=models.CharField(max_length=32),
         expression=_target_ref("post", "comment", "project"),
-        db_persist=True,
+        db_persist=False,
     )
 
     class Meta:

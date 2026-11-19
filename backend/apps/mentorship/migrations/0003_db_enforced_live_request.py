@@ -27,7 +27,7 @@ class Migration(migrations.Migration):
             model_name="mentorshiprequest",
             name="live_flag",
             field=models.GeneratedField(
-                db_persist=True,
+                db_persist=False,
                 expression=models.Case(
                     models.When(status__in=LIVE_STATUSES, then=models.Value(1)),
                     default=models.Value(None, output_field=models.SmallIntegerField()),

@@ -40,7 +40,7 @@ class Notification(TimestampedModel):
             default=models.F("dedupe_key"),
             output_field=models.CharField(max_length=120),
         ),
-        db_persist=True,
+        db_persist=False,
     )
 
     class Meta:

@@ -26,7 +26,7 @@ class Migration(migrations.Migration):
             model_name="notification",
             name="dedupe_ref",
             field=models.GeneratedField(
-                db_persist=True,
+                db_persist=False,
                 expression=models.Case(
                     models.When(
                         dedupe_key="",

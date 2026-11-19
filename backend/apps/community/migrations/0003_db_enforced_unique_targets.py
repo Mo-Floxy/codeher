@@ -65,7 +65,7 @@ class Migration(migrations.Migration):
             model_name="engagement",
             name="target_ref",
             field=models.GeneratedField(
-                db_persist=True,
+                db_persist=False,
                 expression=target_ref("post", "project", "comment"),
                 output_field=models.CharField(max_length=32),
             ),
@@ -74,7 +74,7 @@ class Migration(migrations.Migration):
             model_name="report",
             name="target_ref",
             field=models.GeneratedField(
-                db_persist=True,
+                db_persist=False,
                 expression=target_ref("post", "comment", "project"),
                 output_field=models.CharField(max_length=32),
             ),
