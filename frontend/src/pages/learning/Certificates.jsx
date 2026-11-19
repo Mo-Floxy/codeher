@@ -54,8 +54,19 @@ function readLearnerName(record, fallback) {
   );
 }
 
+// `course` is a bare id in this payload and the course facts arrive flat next to it,
+// so the nested lookups are the fallback rather than the first choice.
+function readCourseLevel(record) {
+  return record?.course_level ?? record?.course?.level ?? null;
+}
+
+function readCourseHours(record) {
+  return record?.duration_hours ?? record?.course?.duration_hours ?? null;
+}
+
 function CertificateSheet({ record, learnerName }) {
-  const course = record?.course ?? {};
+  const courseLevel = readCourseLevel(record);
+  const courseHours = readCourseHours(record);
   return (
     <article className="cert-sheet" aria-label={`Certificate for ${learnerName}`}>
       <div className="cert-sheet__frame">
@@ -73,11 +84,11 @@ function CertificateSheet({ record, learnerName }) {
           <p className="cert-sheet__name">{learnerName}</p>
           <p className="cert-sheet__lead">has completed every lesson and assessment of the course</p>
           <p className="cert-sheet__course">{readCourseTitle(record)}</p>
-          {course.level && (
+          {courseLevel ? (
             <p className="cert-sheet__level">
-              <LevelBadge level={course.level} /> {course.duration_hours ? `· ${course.duration_hours} hours` : ""}
+              <LevelBadge level={courseLevel} /> {courseHours ? `· ${courseHours} hours` : ""}
             </p>
-          )}
+          ) : null}
         </div>
 
         <footer className="cert-sheet__foot">
@@ -95,7 +106,9 @@ function CertificateSheet({ record, learnerName }) {
           </div>
           <div className="cert-sheet__cell">
             <span className="cert-sheet__cell-label">Instructor</span>
-            <strong className="cert-sheet__cell-value">{course.instructor?.display_name ?? record?.instructor_name ?? "—"}</strong>
+            <strong className="cert-sheet__cell-value">
+              {record?.instructor_name ?? record?.course?.instructor?.display_name ?? "—"}
+            </strong>
           </div>
         </footer>
 
@@ -249,7 +262,7 @@ export default function Certificates() {
                   </div>
                   <h2 className="cert-card__course">{readCourseTitle(record)}</h2>
                   <div className="cert-card__meta">
-                    <LevelBadge level={record.course?.level ?? record.level} />
+                    <LevelBadge level={readCourseLevel(record)} />
                     <span className="muted">
                       <CalendarDays size={13} aria-hidden="true" /> {formatDate(readIssuedAt(record)) ?? "Date pending"}
                     </span>
