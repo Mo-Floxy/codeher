@@ -10,7 +10,7 @@ import {
   UserX,
   Users,
 } from "lucide-react";
-import { api } from "../../services/api";
+import { api, endpoints } from "../../services/api";
 import { useAsync } from "../../hooks";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -35,6 +35,10 @@ export default function MemberProfile() {
 
   const profileQuery = useAsync((signal) => api.get(`/users/${id}/`, { signal }), [id]);
   const badgesQuery = useAsync((signal) => api.get(`/users/${id}/badges/`, { signal }), [id]);
+  const projectsQuery = useAsync(
+    (signal) => api.get(endpoints.projects, { params: { user: id, status: "published", page_size: 12 }, signal }),
+    [id]
+  );
 
   const profile = profileQuery.data;
 
@@ -55,8 +59,12 @@ export default function MemberProfile() {
   }, [profile]);
 
   const avatarUser = { display_name: displayName, avatar: profile?.avatar ?? profile?.user?.avatar };
-  const badges = asList(badgesQuery.data);
-  const projects = asList(profile?.projects);
+  // `/users/:id/badges/` answers `{badges, count, hidden}`; the projects feed is a
+  // paginated list. Reading either one as a bare array silently renders nothing.
+  const badges = asList(badgesQuery.data?.badges ?? badgesQuery.data);
+  const badgesHidden = Boolean(badgesQuery.data?.hidden);
+  const projects = asList(projectsQuery.data);
+  const projectsHidden = profile?.project_count === null;
 
   const toggleFollow = async () => {
     setBusy(true);
@@ -171,8 +179,18 @@ export default function MemberProfile() {
       </Card>
 
       <div className="stat-grid">
-        <Stat label="Badges earned" value={badgesQuery.loading ? "…" : badges.length} icon={BadgeCheck} tone="brand" />
-        <Stat label="Public projects" value={profile?.show_projects === false ? "Hidden" : projects.length} icon={FolderGit2} tone="cyan" />
+        <Stat
+          label="Badges earned"
+          value={badgesQuery.loading ? "…" : badgesHidden ? "Hidden" : (profile?.badge_count ?? badges.length)}
+          icon={BadgeCheck}
+          tone="brand"
+        />
+        <Stat
+          label="Public projects"
+          value={projectsQuery.loading ? "…" : projectsHidden ? "Hidden" : projects.length}
+          icon={FolderGit2}
+          tone="cyan"
+        />
         <Stat label="Learning XP" value={num(profile?.total_xp).toLocaleString()} icon={Trophy} tone="success" />
       </div>
 
@@ -201,7 +219,15 @@ export default function MemberProfile() {
 
       <section aria-label="Published projects">
         <h2 style={{ fontSize: "var(--fs-lg)", marginBottom: "var(--sp-4)" }}>Projects</h2>
-        {projects.length === 0 ? (
+        {projectsQuery.loading ? (
+          <Skeleton style={{ height: 120 }} />
+        ) : projectsHidden ? (
+          <EmptyState
+            icon={FolderGit2}
+            title="Projects kept private"
+            description="This member has chosen not to show their published projects on their profile."
+          />
+        ) : projects.length === 0 ? (
           <EmptyState icon={FolderGit2} title="No public projects" description="Published projects appear here when the member shares them and keeps them visible." />
         ) : (
           <div className="grid-auto">

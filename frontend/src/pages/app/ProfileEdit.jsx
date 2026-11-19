@@ -74,6 +74,19 @@ export default function ProfileEdit() {
   const { user, updateProfile, updateUser } = useAuth();
   const toast = useToast();
   const { data: profile, loading, error, reload } = useAsync((signal) => api.get(endpoints.myProfile, { signal }), []);
+  const userId = user?.id;
+  // The profile payload only carries scalar counters, so the badge tiles and the
+  // published-project total come from the same endpoints a profile page uses.
+  const { data: badgePayload } = useAsync(
+    (signal) => api.get(`/users/${userId}/badges/`, { signal }),
+    [userId],
+    { skip: !userId },
+  );
+  const { data: projectPayload } = useAsync(
+    (signal) => api.get(endpoints.projects, { params: { user: userId, status: "published", page_size: 1 }, signal }),
+    [userId],
+    { skip: !userId },
+  );
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [initial, setInitial] = useState(EMPTY_FORM);
@@ -155,9 +168,11 @@ export default function ProfileEdit() {
     }
   };
 
-  const earnedBadges = asList(profile?.badges);
-  const completedCourses = asList(profile?.completed_courses);
-  const publishedProjects = asList(profile?.projects);
+  // `/users/:id/badges/` answers `{badges, count, hidden}` and the project feed answers
+  // `{results, count}`; reading either as a bare array renders nothing at all.
+  const earnedBadges = asList(badgePayload?.badges ?? badgePayload);
+  const completedCourses = num(profile?.completed_course_count);
+  const publishedProjects = num(projectPayload?.count ?? projectPayload?.results?.length);
 
   return (
     <div className="app-page">
@@ -244,7 +259,7 @@ export default function ProfileEdit() {
           <aside className="profile-aside">
             <PublicProfilePreview form={form} />
             <AccountFacts user={user} profile={profile} />
-            <AchievementSummary badges={earnedBadges} courses={completedCourses} projects={publishedProjects} />
+            <AchievementSummary badges={earnedBadges} courseCount={completedCourses} projectCount={publishedProjects} />
           </aside>
         </form>
       ) : null}
@@ -311,7 +326,7 @@ function AccountFacts({ user, profile }) {
   );
 }
 
-function AchievementSummary({ badges, courses, projects }) {
+function AchievementSummary({ badges, courseCount, projectCount }) {
   return (
     <Card className="stack" style={{ gap: "var(--sp-3)" }}>
       <h2 className="card__title">Your record</h2>
@@ -322,11 +337,11 @@ function AchievementSummary({ badges, courses, projects }) {
         </div>
         <div className="row" style={{ justifyContent: "space-between" }}>
           <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>Completed courses</span>
-          <span style={{ fontWeight: 800 }}>{courses.length}</span>
+          <span style={{ fontWeight: 800 }}>{courseCount}</span>
         </div>
         <div className="row" style={{ justifyContent: "space-between" }}>
           <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>Published projects</span>
-          <span style={{ fontWeight: 800 }}>{projects.length}</span>
+          <span style={{ fontWeight: 800 }}>{projectCount}</span>
         </div>
       </div>
       {badges.length > 0 ? (
