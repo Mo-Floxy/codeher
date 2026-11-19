@@ -84,6 +84,8 @@ export default function App() {
             <Route path="reset-password" element={<ResetPassword />} />
             <Route path="learning" element={<Catalog />} />
             <Route path="learning/:slug" element={<CourseDetail />} />
+            <Route path="courses" element={<Navigate to="/learning" replace />} />
+            <Route path="courses/*" element={<Navigate to="/learning" replace />} />
             <Route path="challenges" element={<Challenges />} />
             <Route path="challenges/:id" element={<ChallengeWorkspace />} />
             <Route path="community" element={<Community />} />

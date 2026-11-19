@@ -286,7 +286,7 @@ export default function Catalog() {
                   <Skeleton style={{ width: 84, height: 26, borderRadius: 999 }} />
                 </div>
               ) : pathRows.length === 0 ? (
-                <span className="muted" style={{ fontSize: "var(--fs-xs)" }}>
+                <span className="muted" style={{ display: "block", fontSize: "var(--fs-xs)", marginTop: "var(--sp-1)" }}>
                   No learning paths published yet.
                 </span>
               ) : (
