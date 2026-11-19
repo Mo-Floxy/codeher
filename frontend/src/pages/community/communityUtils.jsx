@@ -77,7 +77,7 @@ function patchToggle(item, kind, result) {
   const count = Number(
     result?.bookmarks_count ?? result?.bookmark_count ?? Math.max(0, bookmarksCount(item) + (bookmarked ? 1 : -1))
   );
-  return { ...item, bookmarked, bookmark_count: count };
+  return { ...item, bookmarked, bookmarks_count: count };
 }
 
 /**
